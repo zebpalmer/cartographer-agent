@@ -41,51 +41,10 @@ jobs:
       - name: Build ${{ matrix.variant.name }}
         run: CGO_ENABLED=0 ${{ matrix.variant.args }} go build -ldflags="-s -w -X 'main.Version=${{ steps.set_version.outputs.version }}'" -o "cartographer-agent_${{ matrix.variant.name }}"
 
-
-
-      - name: Upload binaries to release
+      - name: Upload binaries to GitHub release
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: cartographer-agent_${{ matrix.variant.name }}
           asset_name: cartographer-agent_${{ matrix.variant.name }}
           tag: ${{ github.ref_name }}
-          
-          
-      - uses: BetaHuhn/do-spaces-action@v2
-        with:
-          access_key: ${{ secrets.DO_ACCESS_KEY}}
-          secret_key: ${{ secrets.DO_ACCESS_SECRET }}
-          space_name: ${{ secrets.DO_SPACE_NAME }}
-          space_region: ${{ secrets.DO_SPACE_REGION }}
-          source: cartographer-agent_${{ matrix.variant.name }}
-          out_dir: cartographer-agent-go/${{ github.ref_name }}
-
-      - uses: BetaHuhn/do-spaces-action@v2
-        with:
-          access_key: ${{ secrets.DO_ACCESS_KEY}}
-          secret_key: ${{ secrets.DO_ACCESS_SECRET }}
-          space_name: ${{ secrets.DO_SPACE_NAME }}
-          space_region: ${{ secrets.DO_SPACE_REGION }}
-          source: cartographer-agent_${{ matrix.variant.name }}
-          out_dir: cartographer-agent-go/latest
-
-# LCG S3 Upload
-
-      - uses: BetaHuhn/do-spaces-action@v2
-        with:
-          access_key: ${{ secrets.LCG_DO_ACCESS_KEY}}
-          secret_key: ${{ secrets.LCG_DO_ACCESS_SECRET }}
-          space_name: ${{ secrets.LCG_DO_SPACE_NAME }}
-          space_region: ${{ secrets.LCG_DO_SPACE_REGION }}
-          source: cartographer-agent_${{ matrix.variant.name }}
-          out_dir: cartographer-agent-go/${{ github.ref_name }}
-
-      - uses: BetaHuhn/do-spaces-action@v2
-        with:
-          access_key: ${{ secrets.LCG_DO_ACCESS_KEY}}
-          secret_key: ${{ secrets.LCG_DO_ACCESS_SECRET }}
-          space_name: ${{ secrets.LCG_DO_SPACE_NAME }}
-          space_region: ${{ secrets.LCG_DO_SPACE_REGION }}
-          source: cartographer-agent_${{ matrix.variant.name }}
-          out_dir: cartographer-agent-go/latest
