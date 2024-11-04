@@ -1,0 +1,91 @@
+name: Release Cartographer-Agent
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]*'
+
+jobs:
+  releases-matrix:
+    name: Release Go Binary
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        variant:
+          - { "name": "linux-amd64", "args": "GOOS=linux GOARCH=amd64" }
+          - { "name": "linux-arm6", "args": "GOOS=linux GOARCH=arm GOARM=6" }
+          - { "name": "linux-arm7", "args": "GOOS=linux GOARCH=arm GOARM=7" }
+          - { "name": "linux-arm64", "args": "GOOS=linux GOARCH=arm64" }
+          - { "name": "darwin-amd64", "args": "GOOS=darwin GOARCH=amd64" }
+          - { "name": "darwin-arm64", "args": "GOOS=darwin GOARCH=arm64" }
+
+    steps:
+      - name: Set Versions
+        uses: actions/github-script@v4
+        id: set_version
+        with:
+          script: |
+            const tag = context.ref.substring(10)
+            const version = tag.replace('v', '')
+            core.setOutput('version', version)
+
+      - name: Checkout the repository
+        uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+      - name: Get project dependencies
+        run: go mod download
+
+      - name: Build ${{ matrix.variant.name }}
+        run: CGO_ENABLED=0 ${{ matrix.variant.args }} go build -ldflags="-s -w -X 'main.Version=${{ steps.set_version.outputs.version }}'" -o "cartographer-agent_${{ matrix.variant.name }}"
+
+
+
+      - name: Upload binaries to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: cartographer-agent_${{ matrix.variant.name }}
+          asset_name: cartographer-agent_${{ matrix.variant.name }}
+          tag: ${{ github.ref_name }}
+          
+          
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY}}
+          secret_key: ${{ secrets.DO_ACCESS_SECRET }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: cartographer-agent_${{ matrix.variant.name }}
+          out_dir: cartographer-agent-go/${{ github.ref_name }}
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.DO_ACCESS_KEY}}
+          secret_key: ${{ secrets.DO_ACCESS_SECRET }}
+          space_name: ${{ secrets.DO_SPACE_NAME }}
+          space_region: ${{ secrets.DO_SPACE_REGION }}
+          source: cartographer-agent_${{ matrix.variant.name }}
+          out_dir: cartographer-agent-go/latest
+
+# LCG S3 Upload
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.LCG_DO_ACCESS_KEY}}
+          secret_key: ${{ secrets.LCG_DO_ACCESS_SECRET }}
+          space_name: ${{ secrets.LCG_DO_SPACE_NAME }}
+          space_region: ${{ secrets.LCG_DO_SPACE_REGION }}
+          source: cartographer-agent_${{ matrix.variant.name }}
+          out_dir: cartographer-agent-go/${{ github.ref_name }}
+
+      - uses: BetaHuhn/do-spaces-action@v2
+        with:
+          access_key: ${{ secrets.LCG_DO_ACCESS_KEY}}
+          secret_key: ${{ secrets.LCG_DO_ACCESS_SECRET }}
+          space_name: ${{ secrets.LCG_DO_SPACE_NAME }}
+          space_region: ${{ secrets.LCG_DO_SPACE_REGION }}
+          source: cartographer-agent_${{ matrix.variant.name }}
+          out_dir: cartographer-agent-go/latest
