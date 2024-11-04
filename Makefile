@@ -69,15 +69,20 @@ release: check-type check-branch pre-release $(TYPE) post-release  ## Perform a 
 
 ######### Helpers (not meant to be called directly) #########
 # release checking
-pre-release: check-branch mod-tidy style check-clean test build
+pre-release: mod-tidy style test build check-branch check-clean
 post-release: push
 
-# Check if the current Git branch is 'main'
+# Check if the current Git branch is 'main' and up-to-date with remote
 check-branch:
 	@if [ "$(shell git rev-parse --abbrev-ref HEAD)" != "main" ]; then \
 		echo "You are not on the 'main' branch. Aborting."; \
 		exit 1; \
 	fi
+	@if [ "$(shell git rev-parse @)" != "$(shell git rev-parse @{u})" ]; then \
+		echo "Your local 'main' branch is not up-to-date with the remote. Please pull the latest changes."; \
+		exit 1; \
+	fi
+
 
 check-type:
 	@if [ -z "$(TYPE)" ]; then \
