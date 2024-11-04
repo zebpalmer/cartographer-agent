@@ -1,0 +1,17 @@
+Jul 29 07:17:49 prod-east2-jump-1 systemd-logind[499]: Session 4902 logged out. Waiting for processes to exit.
+Jul 29 07:17:49 prod-east2-jump-1 systemd-logind[499]: Removed session 4902.
+Jul 29 07:17:50 prod-east2-jump-1 sshd[326358]: Connection from 10.10.176.144 port 52216 on 10.40.1.239 port 22 rdomain ""
+Jul 29 07:17:50 prod-east2-jump-1 sshd[326358]: Accepted key RSA SHA256:CMZYXMcLU1cLrlZu/ytDk3bA0OnpNmdgUSxIegwKPLk found at /home/user5/.ssh/authorized_keys:2
+Jul 29 07:17:50 prod-east2-jump-1 sshd[326358]: Postponed publickey for user5 from 10.10.176.144 port 52216 ssh2 [preauth]
+Jul 29 07:17:50 prod-east2-jump-1 sshd[326358]: Accepted key RSA SHA256:CMZYXMcLU1cLrlZu/ytDk3bA0OnpNmdgUSxIegwKPLk found at /home/user5/.ssh/authorized_keys:2
+Jul 29 07:17:50 prod-east2-jump-1 sshd[326358]: Accepted publickey for user5 from 10.10.176.144 port 52216 ssh2: RSA SHA256:CMZYXMcLU1cLrlZu/ytDk3bA0OnpNmdgUSxIegwKPLk
+Jul 29 07:17:50 prod-east2-jump-1 sshd[326358]: pam_unix(sshd:session): session opened for user user5 by (uid=0)
+Jul 29 07:17:50 prod-east2-jump-1 systemd-logind[499]: New session 4904 of user user5.
+Aug  1 15:55:34 prod-east2-jump-1 systemd: pam_unix(systemd-user:session): session opened for user user1 by (uid=0)
+Aug  1 15:55:35 prod-east2-jump-1 sshd[368677]: User child is on pid 368780
+Aug  1 15:56:00 prod-east2-jump-1 sshd[368781]: Connection from 192.168.146.48 port 56485 on 10.40.1.239 port 22 rdomain ""
+Aug  1 15:56:01 prod-east2-jump-1 sshd[368781]: Accepted key RSA SHA256:Wn/LTQ/DojL4+4jqZ3UN3A9GxuXLluQdriKvzGnu43U found at /home/user1/.ssh/authorized_keys:1
+Aug  1 15:56:01 prod-east2-jump-1 sshd[368781]: Accepted publickey for user1 from 192.168.146.48 port 56485 ssh2: RSA SHA256:Wn/LTQ/DojL4+4jqZ3UN3A9GxuXLluQdriKvzGnu43U
+Aug  1 15:56:01 prod-east2-jump-1 sshd[368781]: pam_unix(sshd:session): session opened for user user1 by (uid=0)
+Aug  1 15:56:01 prod-east2-jump-1 systemd-logind[499]: New session 5537 of user user1.
+Aug  1 15:56:02 prod-east2-jump-1 sshd[368781]: User child is on pid 368854

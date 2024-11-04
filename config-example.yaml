@@ -1,0 +1,13 @@
+url: https://cartographer.example.com
+token: SOME_RANDOM_LONG_STRING
+fqdn: fqdn_of_this_instance # will override detected fqdn
+interval: 60
+daemonize: true
+gzip: true
+yaml_files:
+  - name: ansible_facts
+    path: /etc/ansible-facts.yaml
+json_commands:
+  - name: teleport_nodes
+    command: "/usr/local/bin/tctl nodes ls -v --format json"
+    timeout: 10
