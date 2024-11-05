@@ -11,14 +11,7 @@ import (
 )
 
 var (
-	// Version represents the current version of the application.
-	Version = "dev"
-
-	// CommitHash is the Git commit hash from which the binary was built.
-	CommitHash = "dev"
-
-	// BuildTimestamp is the timestamp of when the binary was built.
-	BuildTimestamp = "n/a"
+	Version = "dev" // Will be set during release
 )
 
 // BuildVersion returns the version information for the agent
@@ -94,22 +87,10 @@ func main() {
 	}
 
 	logLevel := getLogLevelFromConfig(config.LogLevel)
-
-	// Initialize the logger with the appropriate level
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: logLevel,
-	}))
-	// assign this logger to the default for use in other functions
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel}))
 	slog.SetDefault(logger)
-
-	// Log the successful config load
 	slog.Info("Configuration loaded successfully")
 
-	// Initialize collectors list
-	slog.Debug("Initializing collectors")
 	collectorsList := internal.GetCollectors(config)
-
-	// Run the agent
 	internal.RunAgent(config, collectorsList, Version)
-
 }

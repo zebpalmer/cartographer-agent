@@ -79,11 +79,11 @@ func ValidateConfig(config Config) error {
 		return errors.New("URL must be provided unless running in dry-run mode")
 	}
 	if config.Token == "" {
-		return errors.New("Token must be provided")
+		return errors.New("token must be provided")
 	}
 
-	if config.Daemonize && config.IntervalMinutes <= 1 {
-		return fmt.Errorf("interval_minutes must be greater than 1 when daemonize is enabled")
+	if config.Daemonize && config.IntervalMinutes < 1 {
+		return fmt.Errorf("interval_minutes must be greater than 0 when daemonize is enabled")
 	}
 
 	validLogLevels := map[string]bool{"info": true, "debug": true, "warn": true, "error": true}
