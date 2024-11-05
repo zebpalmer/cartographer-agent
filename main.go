@@ -59,23 +59,20 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf(BuildVersion() + "\n")
+		fmt.Println(BuildVersion())
 		os.Exit(0)
 	}
 
 	var config configuration.Config
 	var err error
 
-	// Load configuration
 	if *configPath != "" {
 		config, err = configuration.GetConfig(*configPath)
 		if err != nil {
-			// Print error and exit if the configuration cannot be loaded
-			slog.Error("Failed to load configuration", slog.String("path", *configPath), slog.String("error", err.Error()))
+			fmt.Printf("Error loading configuration: %s\n", err.Error())
 			os.Exit(1)
 		}
 	} else {
-		// Fallback to command-line arguments if no config file provided
 		config.URL = *serverURL
 		config.Daemonize = *daemonize
 		config.IntervalMinutes = *intervalMinutes
@@ -84,26 +81,18 @@ func main() {
 	}
 	config.DRYRUN = *dryrun
 
-	// Ensure URL is provided unless it's a dry run
-	if config.URL == "" && !config.DRYRUN {
-		flag.Usage()
-		fmt.Printf("\nMUST PROVIDE: url or request --dryrun\n")
-		os.Exit(1)
-	}
-
-	// Always validate the loaded configuration
+	// Run validation before proceeding further
 	if err := configuration.ValidateConfig(config); err != nil {
-		slog.New(slog.NewTextHandler(os.Stderr, nil)).Error("Configuration validation failed", slog.String("error", err.Error()))
+		fmt.Printf("Configuration validation error: %s\nSee --help for more information.\n", err.Error())
 		os.Exit(1)
 	}
 
-	// If the validate flag is set, exit after validation
+	// Exit after validation if --validate-config is set
 	if *validateConfig {
 		fmt.Println("Configuration is valid.")
 		os.Exit(0)
 	}
 
-	// Set log level based on the config
 	logLevel := getLogLevelFromConfig(config.LogLevel)
 
 	// Initialize the logger with the appropriate level

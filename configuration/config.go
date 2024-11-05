@@ -71,29 +71,25 @@ func GetConfig(configPath string) (Config, error) {
 
 // ValidateConfig checks that the config has required fields and valid values
 func ValidateConfig(config Config) error {
-	// If DRYRUN mode is set, skip validation
 	if config.DRYRUN {
 		return nil
 	}
 
-	// Ensure URL and Token are provided
 	if config.URL == "" {
-		return errors.New("URL must be provided")
+		return errors.New("URL must be provided unless running in dry-run mode")
 	}
 	if config.Token == "" {
-		return errors.New("token must be provided")
+		return errors.New("Token must be provided")
 	}
 
-	// If Daemonize is enabled, IntervalMinutes should be greater than 1
 	if config.Daemonize && config.IntervalMinutes <= 1 {
 		return fmt.Errorf("interval_minutes must be greater than 1 when daemonize is enabled")
 	}
 
-	// Check that LogLevel is valid if specified
 	validLogLevels := map[string]bool{"info": true, "debug": true, "warn": true, "error": true}
 	if config.LogLevel != "" && !validLogLevels[config.LogLevel] {
 		return fmt.Errorf("log_level must be one of 'info', 'debug', 'warn', or 'error'")
 	}
 
-	return nil // Return nil if all checks pass
+	return nil
 }
