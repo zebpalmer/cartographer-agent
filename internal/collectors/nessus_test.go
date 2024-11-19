@@ -222,8 +222,8 @@ func TestNessusCollector(t *testing.T) {
 		t.Error("NessusCollector returned nil")
 	}
 
-	if collector.Name != "nessus_status" {
-		t.Errorf("collector.Name = %v, want %v", collector.Name, "nessus_status")
+	if collector.Name != "nessus_agent" {
+		t.Errorf("collector.Name = %v, want %v", collector.Name, "nessus_agent")
 	}
 
 	if collector.ttl != 5*time.Minute {
