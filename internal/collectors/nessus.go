@@ -16,6 +16,7 @@ var nessusPaths = []string{
 	"/opt/nessus/sbin/nessuscli",
 }
 
+// NessusStatus represents the status of the Nessus agent
 type NessusStatus struct {
 	Running               bool   `json:"running"`
 	LinkedTo              string `json:"linked_to"`
@@ -155,8 +156,9 @@ func parseNessusOutput(output []byte, agentPath string) (*NessusStatus, error) {
 	return status, nil
 }
 
+// NessusCollector returns a collector that runs the nessuscli agent status command
 func NessusCollector(ttl time.Duration, config *configuration.Config) *Collector {
-	return NewCollector("nessus_status", ttl, config, func(cfg *configuration.Config) (interface{}, error) {
+	return NewCollector("nessus_agent", ttl, config, func(cfg *configuration.Config) (interface{}, error) {
 		// Find nessuscli executable
 		nessusPath, err := findNessuscli()
 		if err != nil {
