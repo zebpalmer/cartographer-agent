@@ -53,7 +53,7 @@ func checkUDPPortWithSS(monitor Monitor) (MonitorStatus, string) {
 	}
 
 	lines := strings.Split(string(output), "\n")
-	portStr := fmt.Sprintf(":%d ", monitor.Port)
+	portStr := fmt.Sprintf(":%d", monitor.Port)
 
 	for _, line := range lines {
 		if strings.Contains(line, portStr) {
@@ -74,7 +74,7 @@ func checkUDPPortWithNetstat(monitor Monitor) (MonitorStatus, string) {
 	}
 
 	lines := strings.Split(string(output), "\n")
-	portStr := fmt.Sprintf(":%d ", monitor.Port)
+	portStr := fmt.Sprintf(":%d", monitor.Port)
 
 	for _, line := range lines {
 		if strings.Contains(line, portStr) {
