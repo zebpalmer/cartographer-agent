@@ -56,8 +56,13 @@ func checkUDPPortWithSS(monitor Monitor) (MonitorStatus, string) {
 	portStr := fmt.Sprintf(":%d", monitor.Port)
 
 	for _, line := range lines {
-		if strings.Contains(line, portStr) {
-			return StatusOK, fmt.Sprintf("UDP port %d is bound on localhost", monitor.Port)
+		// Look for :PORT followed by whitespace to avoid false matches (e.g., :53 vs :530)
+		if idx := strings.Index(line, portStr); idx != -1 {
+			// Check if the character after :PORT is whitespace or end of string
+			endIdx := idx + len(portStr)
+			if endIdx >= len(line) || line[endIdx] == ' ' || line[endIdx] == '\t' {
+				return StatusOK, fmt.Sprintf("UDP port %d is bound on localhost", monitor.Port)
+			}
 		}
 	}
 
@@ -77,8 +82,13 @@ func checkUDPPortWithNetstat(monitor Monitor) (MonitorStatus, string) {
 	portStr := fmt.Sprintf(":%d", monitor.Port)
 
 	for _, line := range lines {
-		if strings.Contains(line, portStr) {
-			return StatusOK, fmt.Sprintf("UDP port %d is bound on localhost", monitor.Port)
+		// Look for :PORT followed by whitespace to avoid false matches (e.g., :53 vs :530)
+		if idx := strings.Index(line, portStr); idx != -1 {
+			// Check if the character after :PORT is whitespace or end of string
+			endIdx := idx + len(portStr)
+			if endIdx >= len(line) || line[endIdx] == ' ' || line[endIdx] == '\t' {
+				return StatusOK, fmt.Sprintf("UDP port %d is bound on localhost", monitor.Port)
+			}
 		}
 	}
 
