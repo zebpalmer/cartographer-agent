@@ -1,16 +1,16 @@
 package internal
 
 import (
+	collectors2 "cartographer-go-agent/collectors"
 	"cartographer-go-agent/common"
 	"cartographer-go-agent/configuration"
-	"cartographer-go-agent/internal/collectors"
 	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 )
 
-func buildDataReport(config configuration.Config, collectorsList []*collectors.Collector, version string) map[string]interface{} {
+func buildDataReport(config configuration.Config, collectorsList []*collectors2.Collector, version string) map[string]interface{} {
 	hostname, _ := os.Hostname()
 
 	data := map[string]interface{}{
@@ -22,7 +22,7 @@ func buildDataReport(config configuration.Config, collectorsList []*collectors.C
 	for _, collector := range collectorsList {
 		collectorData, err := collector.Collect()
 		if err != nil {
-			if errors.Is(err, collectors.ErrCollectorSkipped) {
+			if errors.Is(err, collectors2.ErrCollectorSkipped) {
 				slog.Info("Skipping collector due to unsupported OS",
 					slog.String("collector_name", collector.Name),
 				)
@@ -42,7 +42,7 @@ func buildDataReport(config configuration.Config, collectorsList []*collectors.C
 }
 
 // ReportTask This function will be scheduled by the RunAgent function.
-func ReportTask(config configuration.Config, collectorsList []*collectors.Collector, version string) {
+func ReportTask(config configuration.Config, collectorsList []*collectors2.Collector, version string) {
 	slog.Info("Starting agent report task")
 	// Build the report
 	data := buildDataReport(config, collectorsList, version)
