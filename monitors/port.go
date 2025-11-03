@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -53,10 +54,9 @@ func checkUDPPortWithSS(monitor Monitor) (MonitorStatus, string) {
 	}
 
 	lines := strings.Split(string(output), "\n")
-	portStr := fmt.Sprintf(":%d ", monitor.Port)
 
 	for _, line := range lines {
-		if strings.Contains(line, portStr) {
+		if matchesPort(line, monitor.Port) {
 			return StatusOK, fmt.Sprintf("UDP port %d is bound on localhost", monitor.Port)
 		}
 	}
@@ -74,15 +74,26 @@ func checkUDPPortWithNetstat(monitor Monitor) (MonitorStatus, string) {
 	}
 
 	lines := strings.Split(string(output), "\n")
-	portStr := fmt.Sprintf(":%d ", monitor.Port)
 
 	for _, line := range lines {
-		if strings.Contains(line, portStr) {
+		if matchesPort(line, monitor.Port) {
 			return StatusOK, fmt.Sprintf("UDP port %d is bound on localhost", monitor.Port)
 		}
 	}
 
 	return StatusCritical, fmt.Sprintf("UDP port %d is not bound on localhost", monitor.Port)
+}
+
+// matchesPort checks if a line contains the specified port in a valid format.
+// It looks for :PORT followed by a non-digit character (space, tab, etc.) or end of string.
+// This handles various output formats including IPv4, IPv6, and different delimiters.
+func matchesPort(line string, port int) bool {
+	portPattern := fmt.Sprintf(`:%d(\D|$)`, port)
+	matched, err := regexp.MatchString(portPattern, line)
+	if err != nil {
+		return false
+	}
+	return matched
 }
 
 // isCommandAvailable checks if a command is available in PATH
