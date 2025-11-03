@@ -10,14 +10,5 @@ monitors:
       status_codes: [200]
       cert_expiry_days: 14
 
-  - name: http-redirect-test
-    type: http
-    url: http://github.com
-    follow_redirects: false
-    priority: low
-    environment: test
-    tags: [external, test, redirect]
-    description: "Test redirect handling - GitHub HTTP to HTTPS"
-    validations:
-      status_codes: [301, 302]
+
 
