@@ -1,0 +1,13 @@
+monitors:
+- name: httpbin-status-200
+  type: http
+  url: https://httpbin.org/status/200
+  priority: low
+  environment: test
+  tags: [external, test, httpbin]
+  description: "HTTPBin test endpoint"
+  timeout: 15
+  retries: 2
+  retry_delay: 2
+  validations:
+    status_codes: [200]

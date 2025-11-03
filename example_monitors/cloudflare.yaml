@@ -1,0 +1,22 @@
+monitors:
+  # Cloudflare DNS - TCP
+  - name: cloudflare-dns-tcp
+    type: port
+    host: 1.1.1.1
+    port: 53
+    protocol: tcp
+    priority: medium
+    environment: external
+    tags: [external, dns, cloudflare, tcp]
+    description: "Cloudflare DNS TCP port 53"
+    timeout: 5
+
+  - name: cloudflare-https
+    type: port
+    host: 1.1.1.1
+    port: 443
+    protocol: tcp
+    priority: low
+    environment: external
+    tags: [ external, https, cloudflare ]
+    description: "Cloudflare HTTPS port"
