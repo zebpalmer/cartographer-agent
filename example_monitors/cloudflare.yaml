@@ -12,11 +12,12 @@ monitors:
     timeout: 5
 
   - name: cloudflare-https
-    type: port
-    host: 1.1.1.1
-    port: 443
+    type: http
+    host: https://cloudflare.com
     protocol: tcp
     priority: low
     environment: external
     tags: [ external, https, cloudflare ]
-    description: "Cloudflare HTTPS port"
+    validations:
+      status_codes: [ 200 ]
+      cert_expiry_days: 14
