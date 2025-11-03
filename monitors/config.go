@@ -34,7 +34,7 @@ type Monitor struct {
 	Body            string            `yaml:"body"`
 	VerifyTLS       *bool             `yaml:"verify_tls"`
 	FollowRedirects *bool             `yaml:"follow_redirects"`
-	Validations     *HTTPValidations  `yaml:"validations,omitempty"`
+	Validations     *Validations      `yaml:"validations,omitempty"`
 
 	// Port-specific fields
 	Port     int    `yaml:"port"`
@@ -42,20 +42,18 @@ type Monitor struct {
 	Protocol string `yaml:"protocol"`
 
 	// Systemd-specific fields
-	Target             string              `yaml:"target"`
-	SystemdValidations *SystemdValidations `yaml:"validations,omitempty"`
+	Target string `yaml:"target"`
 }
 
-// HTTPValidations represents validation rules for HTTP monitors
-type HTTPValidations struct {
+// Validations represents validation rules for monitors (type-specific fields)
+type Validations struct {
+	// HTTP validations
 	StatusCodes    []int  `yaml:"status_codes"`
 	BodyContains   string `yaml:"body_contains"`
 	BodyRegex      string `yaml:"body_regex"`
 	CertExpiryDays int    `yaml:"cert_expiry_days"`
-}
 
-// SystemdValidations represents validation rules for systemd monitors
-type SystemdValidations struct {
+	// Systemd validations
 	State        string `yaml:"state"`
 	Enabled      *bool  `yaml:"enabled"`
 	RestartCount *int   `yaml:"restart_count"`
@@ -88,7 +86,7 @@ func (m *Monitor) ApplyDefaults() {
 			m.FollowRedirects = &defaultFollowRedirects
 		}
 		if m.Validations == nil {
-			m.Validations = &HTTPValidations{
+			m.Validations = &Validations{
 				StatusCodes: []int{200},
 			}
 		} else if len(m.Validations.StatusCodes) == 0 {
@@ -108,19 +106,19 @@ func (m *Monitor) ApplyDefaults() {
 
 	// Systemd defaults
 	if m.Type == "systemd" {
-		if m.SystemdValidations == nil {
+		if m.Validations == nil {
 			defaultEnabled := true
-			m.SystemdValidations = &SystemdValidations{
+			m.Validations = &Validations{
 				State:   "active",
 				Enabled: &defaultEnabled,
 			}
 		} else {
-			if m.SystemdValidations.State == "" {
-				m.SystemdValidations.State = "active"
+			if m.Validations.State == "" {
+				m.Validations.State = "active"
 			}
-			if m.SystemdValidations.Enabled == nil {
+			if m.Validations.Enabled == nil {
 				defaultEnabled := true
-				m.SystemdValidations.Enabled = &defaultEnabled
+				m.Validations.Enabled = &defaultEnabled
 			}
 		}
 	}

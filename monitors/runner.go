@@ -13,7 +13,6 @@ import (
 // MonitorStatus represents the status of a monitor check
 type MonitorStatus string
 
-// Monitor status constants
 const (
 	StatusOK       MonitorStatus = "ok"
 	StatusWarning  MonitorStatus = "warning"
@@ -162,8 +161,8 @@ func runMonitorCheck(monitor Monitor) MonitorResult {
 		status, message = checkHTTP(monitor)
 	case "port":
 		status, message = checkPort(monitor)
-	//case "systemd":
-	//	status, message = checkSystemd(monitor)
+	case "systemd":
+		status, message = checkSystemd(monitor)
 	default:
 		status = StatusUnknown
 		message = fmt.Sprintf("Unknown monitor type: %s", monitor.Type)
