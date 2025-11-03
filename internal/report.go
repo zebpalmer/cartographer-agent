@@ -63,7 +63,7 @@ func SendReport(config configuration.Config, data map[string]interface{}) {
 	}
 
 	if config.DRYRUN {
-		fmt.Printf(string(jsonValue))
+		fmt.Print(string(jsonValue))
 		slog.Info("DRYRUN: Not sending report")
 		return
 	}

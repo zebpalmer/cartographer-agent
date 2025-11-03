@@ -3,6 +3,7 @@ package main
 import (
 	"cartographer-go-agent/configuration"
 	"cartographer-go-agent/internal"
+	"cartographer-go-agent/monitors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -11,6 +12,7 @@ import (
 )
 
 var (
+	// Version holds the current version of the agent
 	Version = "dev" // Will be set during release
 )
 
@@ -92,5 +94,14 @@ func main() {
 	slog.Info("Configuration loaded successfully")
 
 	collectorsList := internal.GetCollectors(config)
+
+	// Start monitoring system in background (if enabled)
+	if config.IsMonitoringEnabled() {
+		go monitors.Run(config, Version)
+	} else {
+		slog.Info("Monitoring is disabled")
+	}
+
+	// Start main agent (existing collectors, heartbeat, updates)
 	internal.RunAgent(config, collectorsList, Version)
 }

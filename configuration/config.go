@@ -24,18 +24,20 @@ type JSONCommand struct {
 
 // Config represents the configuration for the agent
 type Config struct {
-	URL             string           `yaml:"url"`
-	IntervalMinutes int              `yaml:"interval_minutes"`
-	JitterSeconds   int              `yaml:"jitter_seconds"`
-	Daemonize       bool             `yaml:"daemonize"`
-	FQDN            string           `yaml:"fqdn"`
-	Token           string           `yaml:"token"`
-	YamlFiles       []ConfigYamlFile `yaml:"yaml_files"`
-	JSONCommands    []JSONCommand    `yaml:"json_commands"`
-	Gzip            bool             `yaml:"gzip"`
-	LogLevel        string           `yaml:"log_level"`
-	ReleaseURL      string           `yaml:"release_url"`
-	DRYRUN          bool
+	URL              string           `yaml:"url"`
+	IntervalMinutes  int              `yaml:"interval_minutes"`
+	JitterSeconds    int              `yaml:"jitter_seconds"`
+	Daemonize        bool             `yaml:"daemonize"`
+	FQDN             string           `yaml:"fqdn"`
+	Token            string           `yaml:"token"`
+	YamlFiles        []ConfigYamlFile `yaml:"yaml_files"`
+	JSONCommands     []JSONCommand    `yaml:"json_commands"`
+	Gzip             bool             `yaml:"gzip"`
+	LogLevel         string           `yaml:"log_level"`
+	ReleaseURL       string           `yaml:"release_url"`
+	EnableMonitoring *bool            `yaml:"enable_monitoring"`
+	MonitorsDir      string           `yaml:"monitors_dir"`
+	DRYRUN           bool
 }
 
 // GetConfig reads the configuration from the provided path
@@ -66,6 +68,16 @@ func GetConfig(configPath string) (Config, error) {
 		config.LogLevel = "info"
 	}
 
+	// Set monitoring defaults
+	if config.MonitorsDir == "" {
+		config.MonitorsDir = "/etc/cartographer/monitors.d"
+	}
+
+	if config.EnableMonitoring == nil {
+		defaultValue := true
+		config.EnableMonitoring = &defaultValue
+	}
+
 	return *config, nil
 }
 
@@ -92,4 +104,9 @@ func ValidateConfig(config Config) error {
 	}
 
 	return nil
+}
+
+// IsMonitoringEnabled returns true if monitoring is enabled in the config
+func (c *Config) IsMonitoringEnabled() bool {
+	return c.EnableMonitoring != nil && *c.EnableMonitoring
 }
