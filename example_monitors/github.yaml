@@ -8,14 +8,20 @@ monitors:
     tags: [external, test, redirect]
     description: "Test redirect handling - GitHub HTTP to HTTPS, don't follow"
     validations:
-      status_codes: [301, 302]
+      status_codes:
+        - 301
+        - 302
 
   - name: github https
     type: http
     url: http://github.com
     follow_redirects: true
     environment: external
-    tags: [ external, test, redirect ]
+    tags:
+    - external
+    - test
+    - redirect
     description: "Test redirect handling - GitHub HTTP to HTTPS with follow"
     validations:
-      status_codes: [ 301, 302 ]
+      status_codes:
+        - 200

@@ -13,9 +13,10 @@ monitors:
 
   - name: cloudflare-https
     type: http
-    host: https://cloudflare.com
+    url: https://cloudflare.com
     protocol: tcp
     priority: low
+    follow_redirects: true
     environment: external
     tags: [ external, https, cloudflare ]
     validations:
