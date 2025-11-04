@@ -13,6 +13,7 @@ import (
 // MonitorStatus represents the status of a monitor check
 type MonitorStatus string
 
+// Status constants follow Nagios/Icinga conventions
 const (
 	StatusOK       MonitorStatus = "ok"
 	StatusWarning  MonitorStatus = "warning"
@@ -22,13 +23,47 @@ const (
 
 // MonitorResult represents the result of a single monitor execution
 type MonitorResult struct {
-	Name       string        `json:"name"`
-	Type       string        `json:"type"`
+	// Metadata - WHO/WHAT this monitor is
+	Name        string   `json:"name"`
+	Type        string   `json:"type"`
+	Priority    string   `json:"priority,omitempty"`
+	Environment string   `json:"environment,omitempty"`
+	Tags        []string `json:"tags,omitempty"`
+	Description string   `json:"description,omitempty"`
+
+	// Result data
 	Status     MonitorStatus `json:"status"`
 	Message    string        `json:"message"`
 	Timestamp  string        `json:"timestamp"`
 	DurationMs int64         `json:"duration_ms"`
-	Config     Monitor       `json:"config"`
+
+	// Technical config - HOW it works
+	Config MonitorConfig `json:"config"`
+}
+
+// MonitorConfig contains technical implementation details only
+type MonitorConfig struct {
+	// Common technical fields
+	Timeout    int `json:"timeout"`
+	Retries    int `json:"retries"`
+	RetryDelay int `json:"retry_delay"`
+
+	// HTTP-specific
+	URL             string            `json:"url,omitempty"`
+	Method          string            `json:"method,omitempty"`
+	Headers         map[string]string `json:"headers,omitempty"`
+	Body            string            `json:"body,omitempty"`
+	VerifyTLS       *bool             `json:"verify_tls,omitempty"`
+	FollowRedirects *bool             `json:"follow_redirects,omitempty"`
+	Validations     *Validations      `json:"validations,omitempty"`
+
+	// Port-specific
+	Port     int    `json:"port,omitempty"`
+	Host     string `json:"host,omitempty"`
+	Protocol string `json:"protocol,omitempty"`
+
+	// Systemd-specific
+	Target string `json:"target,omitempty"`
 }
 
 // MonitorReport represents the full report sent to cartographer
@@ -157,14 +192,12 @@ func executeMonitor(monitor Monitor) MonitorResult {
 	return lastResult
 }
 
-// runMonitorCheck executes a single monitor check (no retry logic)
 func runMonitorCheck(monitor Monitor) MonitorResult {
 	start := time.Now()
 
 	var status MonitorStatus
 	var message string
 
-	// Route to appropriate monitor type
 	switch monitor.Type {
 	case "http":
 		status, message = checkHTTP(monitor)
@@ -179,14 +212,41 @@ func runMonitorCheck(monitor Monitor) MonitorResult {
 
 	duration := time.Since(start).Milliseconds()
 
+	// Build technical config (no metadata)
+	config := MonitorConfig{
+		Timeout:         monitor.Timeout,
+		Retries:         monitor.Retries,
+		RetryDelay:      monitor.RetryDelay,
+		URL:             monitor.URL,
+		Method:          monitor.Method,
+		Headers:         monitor.Headers,
+		Body:            monitor.Body,
+		VerifyTLS:       monitor.VerifyTLS,
+		FollowRedirects: monitor.FollowRedirects,
+		Validations:     monitor.Validations,
+		Port:            monitor.Port,
+		Host:            monitor.Host,
+		Protocol:        monitor.Protocol,
+		Target:          monitor.Target,
+	}
+
 	return MonitorResult{
-		Name:       monitor.Name,
-		Type:       monitor.Type,
+		// Metadata
+		Name:        monitor.Name,
+		Type:        monitor.Type,
+		Priority:    monitor.Priority,
+		Environment: monitor.Environment,
+		Tags:        monitor.Tags,
+		Description: monitor.Description,
+
+		// Result
 		Status:     status,
 		Message:    message,
 		Timestamp:  time.Now().UTC().Format(time.RFC3339),
 		DurationMs: duration,
-		Config:     monitor,
+
+		// Technical config
+		Config: config,
 	}
 }
 

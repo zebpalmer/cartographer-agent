@@ -17,46 +17,46 @@ type MonitorFile struct {
 // Monitor represents a single monitor configuration
 type Monitor struct {
 	// Common fields
-	Name        string   `yaml:"name"`
-	Type        string   `yaml:"type"`
-	Priority    string   `yaml:"priority"`
-	Environment string   `yaml:"environment"`
-	Tags        []string `yaml:"tags"`
-	Description string   `yaml:"description"`
-	Timeout     int      `yaml:"timeout"`
-	Retries     int      `yaml:"retries"`
-	RetryDelay  int      `yaml:"retry_delay"`
+	Name        string   `yaml:"name" json:"name"`
+	Type        string   `yaml:"type" json:"type"`
+	Priority    string   `yaml:"priority" json:"priority,omitempty"`
+	Environment string   `yaml:"environment" json:"environment,omitempty"`
+	Tags        []string `yaml:"tags" json:"tags,omitempty"`
+	Description string   `yaml:"description" json:"description,omitempty"`
+	Timeout     int      `yaml:"timeout" json:"timeout"`
+	Retries     int      `yaml:"retries" json:"retries"`
+	RetryDelay  int      `yaml:"retry_delay" json:"retry_delay"`
 
 	// HTTP-specific fields
-	URL             string            `yaml:"url"`
-	Method          string            `yaml:"method"`
-	Headers         map[string]string `yaml:"headers"`
-	Body            string            `yaml:"body"`
-	VerifyTLS       *bool             `yaml:"verify_tls"`
-	FollowRedirects *bool             `yaml:"follow_redirects"`
-	Validations     *Validations      `yaml:"validations,omitempty"`
+	URL             string            `yaml:"url" json:"url,omitempty"`
+	Method          string            `yaml:"method" json:"method,omitempty"`
+	Headers         map[string]string `yaml:"headers" json:"headers,omitempty"`
+	Body            string            `yaml:"body" json:"body,omitempty"`
+	VerifyTLS       *bool             `yaml:"verify_tls" json:"verify_tls,omitempty"`
+	FollowRedirects *bool             `yaml:"follow_redirects" json:"follow_redirects,omitempty"`
+	Validations     *Validations      `yaml:"validations,omitempty" json:"validations,omitempty"`
 
 	// Port-specific fields
-	Port     int    `yaml:"port"`
-	Host     string `yaml:"host"`
-	Protocol string `yaml:"protocol"`
+	Port     int    `yaml:"port" json:"port,omitempty"`
+	Host     string `yaml:"host" json:"host,omitempty"`
+	Protocol string `yaml:"protocol" json:"protocol,omitempty"`
 
 	// Systemd-specific fields
-	Target string `yaml:"target"`
+	Target string `yaml:"target" json:"target,omitempty"`
 }
 
 // Validations represents validation rules for monitors (type-specific fields)
 type Validations struct {
 	// HTTP validations
-	StatusCodes    []int  `yaml:"status_codes"`
-	BodyContains   string `yaml:"body_contains"`
-	BodyRegex      string `yaml:"body_regex"`
-	CertExpiryDays int    `yaml:"cert_expiry_days"`
+	StatusCodes    []int  `yaml:"status_codes" json:"status_codes,omitempty"`
+	BodyContains   string `yaml:"body_contains" json:"body_contains,omitempty"`
+	BodyRegex      string `yaml:"body_regex" json:"body_regex,omitempty"`
+	CertExpiryDays int    `yaml:"cert_expiry_days" json:"cert_expiry_days,omitempty"`
 
 	// Systemd validations
-	State        string `yaml:"state"`
-	Enabled      *bool  `yaml:"enabled"`
-	RestartCount *int   `yaml:"restart_count"`
+	State        string `yaml:"state" json:"state,omitempty"`
+	Enabled      *bool  `yaml:"enabled" json:"enabled,omitempty"`
+	RestartCount *int   `yaml:"restart_count" json:"restart_count,omitempty"`
 }
 
 // ApplyDefaults applies default values to a monitor configuration
