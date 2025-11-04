@@ -1,9 +1,16 @@
-url: https://cartographer.example.com
+url: http://localhost:8090/api/agent
 token: SOME_RANDOM_LONG_STRING
-fqdn: fqdn_of_this_instance # will override detected fqdn
+# fqdn: dev-host.example.com # will override detected fqdn
 interval: 60
 daemonize: true
 gzip: true
+interval_minutes: 10
+jitter_seconds: 60
+log_level: info
+
+release_url: "https://lcg-cartographer.nyc3.digitaloceanspaces.com/cartographer-agent-go/v{{.version}}/cartographer-agent_{{.osType}}-{{.arch}}"
+monitors_dir: "./example_monitors"  # defaults to "/etc/cartographer/monitors.d"
+
 yaml_files:
   - name: ansible_facts
     path: /etc/ansible-facts.yaml
@@ -11,3 +18,4 @@ json_commands:
   - name: teleport_nodes
     command: "/usr/local/bin/tctl nodes ls -v --format json"
     timeout: 10
+

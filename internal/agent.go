@@ -1,9 +1,9 @@
 package internal
 
 import (
+	"cartographer-go-agent/collectors"
 	"cartographer-go-agent/common"
 	"cartographer-go-agent/configuration"
-	"cartographer-go-agent/internal/collectors"
 	"log/slog"
 	"os"
 	"time"

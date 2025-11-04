@@ -1,9 +1,9 @@
 package internal
 
 import (
+	collectors "cartographer-go-agent/collectors"
 	"cartographer-go-agent/common"
 	"cartographer-go-agent/configuration"
-	"cartographer-go-agent/internal/collectors"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -63,7 +63,7 @@ func SendReport(config configuration.Config, data map[string]interface{}) {
 	}
 
 	if config.DRYRUN {
-		fmt.Printf(string(jsonValue))
+		fmt.Print(string(jsonValue))
 		slog.Info("DRYRUN: Not sending report")
 		return
 	}

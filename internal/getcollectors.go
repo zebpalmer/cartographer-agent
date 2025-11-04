@@ -1,8 +1,8 @@
 package internal
 
 import (
+	collectors "cartographer-go-agent/collectors"
 	"cartographer-go-agent/configuration"
-	"cartographer-go-agent/internal/collectors"
 	"time"
 )
 
