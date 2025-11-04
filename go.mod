@@ -3,7 +3,7 @@ module cartographer-go-agent
 require (
 	github.com/go-co-op/gocron/v2 v2.12.1
 	github.com/google/uuid v1.6.0
-	github.com/zcalusic/sysinfo v1.1.2
+	github.com/zcalusic/sysinfo v1.1.3
 	golang.org/x/lint v0.0.0-20210508222113-6edffad5e616
 	golang.org/x/tools v0.26.0
 	gopkg.in/yaml.v3 v3.0.1
