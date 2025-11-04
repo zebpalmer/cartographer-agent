@@ -125,21 +125,30 @@ func runMonitoringCycle(config configuration.Config, fqdn string) {
 func executeMonitor(monitor Monitor) MonitorResult {
 	var lastResult MonitorResult
 
-	for attempt := 0; attempt <= monitor.Retries; attempt++ {
-		if attempt > 0 {
-			slog.Debug("Retrying monitor",
-				slog.String("name", monitor.Name),
-				slog.Int("attempt", attempt),
-			)
-			if monitor.RetryDelay > 0 {
-				time.Sleep(time.Duration(monitor.RetryDelay) * time.Second)
-			}
+	// Initial attempt (always runs once)
+	lastResult = runMonitorCheck(monitor)
+
+	// If OK or no retries configured, return immediately
+	if lastResult.Status == StatusOK || monitor.Retries == 0 {
+		return lastResult
+	}
+
+	// Retry logic
+	for attempt := 1; attempt <= monitor.Retries; attempt++ {
+		slog.Debug("Retrying monitor",
+			slog.String("name", monitor.Name),
+			slog.Int("attempt", attempt),
+			slog.Int("max_retries", monitor.Retries),
+		)
+
+		if monitor.RetryDelay > 0 {
+			time.Sleep(time.Duration(monitor.RetryDelay) * time.Second)
 		}
 
 		// Execute the appropriate monitor type
 		lastResult = runMonitorCheck(monitor)
 
-		// If OK, no need to retry
+		// If OK, no need to continue retrying
 		if lastResult.Status == StatusOK {
 			break
 		}
