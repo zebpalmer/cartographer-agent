@@ -14,7 +14,6 @@ monitors:
   - name: cloudflare-https
     type: http
     url: https://cloudflare.com
-    protocol: tcp
     priority: low
     follow_redirects: true
     environment: external
