@@ -110,7 +110,7 @@ func checkCommand(monitor Monitor) (MonitorStatus, string) {
 	// Validate output does NOT contain specified string
 	if monitor.Validations != nil && monitor.Validations.OutputNotContains != "" {
 		if strings.Contains(stdoutStr, monitor.Validations.OutputNotContains) {
-			return StatusCritical, fmt.Sprintf("Output contains unexpected string: '%s'. Got: %s", monitor.Validations.OutputNotContains, truncateOutput(stdoutStr))
+			return StatusCritical, fmt.Sprintf("Output must not contain: '%s'. Got: %s", monitor.Validations.OutputNotContains, truncateOutput(stdoutStr))
 		}
 	}
 
