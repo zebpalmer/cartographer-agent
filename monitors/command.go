@@ -1,0 +1,104 @@
+package monitors
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"os/exec"
+	"regexp"
+	"strings"
+	"time"
+)
+
+// checkCommand executes a custom command and validates the output
+func checkCommand(monitor Monitor) (MonitorStatus, string) {
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(monitor.Timeout)*time.Second)
+	defer cancel()
+
+	// Create command with shell execution to support piping and shell features
+	cmd := exec.CommandContext(ctx, "sh", "-c", monitor.Command)
+
+	// Set working directory if specified
+	if monitor.WorkingDir != "" {
+		cmd.Dir = monitor.WorkingDir
+	}
+
+	// Capture stdout and stderr separately
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	// Execute command
+	err := cmd.Run()
+	exitCode := 0
+
+	// Get exit code
+	if err != nil {
+		if exitError, ok := err.(*exec.ExitError); ok {
+			exitCode = exitError.ExitCode()
+		} else if ctx.Err() == context.DeadlineExceeded {
+			return StatusCritical, fmt.Sprintf("Command timed out after %d seconds", monitor.Timeout)
+		} else {
+			return StatusUnknown, fmt.Sprintf("Failed to execute command: %v", err)
+		}
+	}
+
+	stdoutStr := strings.TrimSpace(stdout.String())
+	stderrStr := strings.TrimSpace(stderr.String())
+
+	// Validate exit code
+	expectedExitCode := 0
+	if monitor.Validations != nil && monitor.Validations.ExitCode != nil {
+		expectedExitCode = *monitor.Validations.ExitCode
+	}
+
+	if exitCode != expectedExitCode {
+		return StatusCritical, fmt.Sprintf("Exit code %d (expected %d). Output: %s", exitCode, expectedExitCode, stdoutStr)
+	}
+
+	// Validate output contains expected string
+	if monitor.Validations != nil && monitor.Validations.OutputContains != "" {
+		if !strings.Contains(stdoutStr, monitor.Validations.OutputContains) {
+			return StatusCritical, fmt.Sprintf("Output does not contain expected string: '%s'. Got: %s", monitor.Validations.OutputContains, stdoutStr)
+		}
+	}
+
+	// Validate output does NOT contain specified string
+	if monitor.Validations != nil && monitor.Validations.OutputNotContains != "" {
+		if strings.Contains(stdoutStr, monitor.Validations.OutputNotContains) {
+			return StatusCritical, fmt.Sprintf("Output contains unexpected string: '%s'. Got: %s", monitor.Validations.OutputNotContains, stdoutStr)
+		}
+	}
+
+	// Validate output matches regex
+	if monitor.Validations != nil && monitor.Validations.OutputRegex != "" {
+		matched, err := regexp.MatchString(monitor.Validations.OutputRegex, stdoutStr)
+		if err != nil {
+			return StatusUnknown, fmt.Sprintf("Invalid regex pattern: %v", err)
+		}
+		if !matched {
+			return StatusCritical, fmt.Sprintf("Output does not match regex: '%s'. Got: %s", monitor.Validations.OutputRegex, stdoutStr)
+		}
+	}
+
+	// Validate stderr contains expected string
+	if monitor.Validations != nil && monitor.Validations.ErrorContains != "" {
+		if !strings.Contains(stderrStr, monitor.Validations.ErrorContains) {
+			return StatusCritical, fmt.Sprintf("Stderr does not contain expected string: '%s'. Got: %s", monitor.Validations.ErrorContains, stderrStr)
+		}
+	}
+
+	// Build success message
+	message := fmt.Sprintf("Command executed successfully (exit code %d)", exitCode)
+	if stdoutStr != "" {
+		// Truncate output if too long
+		if len(stdoutStr) > 100 {
+			message = fmt.Sprintf("%s. Output: %s...", message, stdoutStr[:100])
+		} else {
+			message = fmt.Sprintf("%s. Output: %s", message, stdoutStr)
+		}
+	}
+
+	return StatusOK, message
+}

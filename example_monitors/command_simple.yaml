@@ -1,0 +1,21 @@
+monitors:
+  # Simple command that checks if echo works
+  - name: echo_test
+    type: command
+    description: Simple echo test
+    priority: low
+    command: "echo 'Hello World'"
+    timeout: 5
+    validations:
+      exit_code: 0
+      output_contains: "Hello"
+
+  # Check uptime command
+  - name: system_uptime
+    type: command
+    description: Check system uptime
+    priority: info
+    command: "uptime"
+    timeout: 5
+    validations:
+      exit_code: 0
