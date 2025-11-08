@@ -3,6 +3,27 @@
 # Do not accept monitor configs from user input or untrusted sources.
 
 monitors:
+  # Simple echo test
+  - name: echo_test
+    type: command
+    description: Simple echo test
+    priority: low
+    command: "echo 'Hello World'"
+    timeout: 5
+    validations:
+      exit_code: 0
+      output_contains: "Hello"
+
+  # Check system uptime
+  - name: system_uptime
+    type: command
+    description: Check system uptime
+    priority: info
+    command: "uptime"
+    timeout: 5
+    validations:
+      exit_code: 0
+
   # Basic command execution with exit code validation
   - name: disk_space_check
     type: command
@@ -58,23 +79,6 @@ monitors:
     validations:
       exit_code: 0
       output_contains: "exists"
-
-  # Command with multiple validations
-  - name: database_connection
-    type: command
-    description: Test database connectivity
-    priority: critical
-    environment: production
-    tags:
-      - database
-      - mysql
-    command: "mysql -h localhost -u monitor -ppassword -e 'SELECT 1' 2>&1"
-    timeout: 10
-    retries: 2
-    retry_delay: 5
-    validations:
-      exit_code: 0
-      output_regex: "^\\s*1\\s*$"
 
   # Command checking process count
   - name: nginx_processes
