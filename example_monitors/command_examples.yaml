@@ -1,14 +1,29 @@
+# SECURITY WARNING: Command monitors execute arbitrary shell commands.
+# Only load monitor configurations from trusted sources (root-owned files).
+# Do not accept monitor configs from user input or untrusted sources.
+
 monitors:
   # Basic command execution with exit code validation
   - name: disk_space_check
     type: command
-    description: Check if disk space is above 20% available
+    description: Extract disk usage percentage
     priority: high
     command: "df -h / | tail -n 1 | awk '{print $5}' | sed 's/%//'"
     timeout: 5
     validations:
       exit_code: 0
       output_regex: "^[0-9]+$"
+
+  # Disk space check with actual threshold validation
+  - name: disk_space_threshold_check
+    type: command
+    description: Ensure disk usage is below 80%
+    priority: high
+    command: "usage=$(df / | tail -n 1 | awk '{print $5}' | sed 's/%//'); [ $usage -lt 80 ] && echo 'OK' || exit 1"
+    timeout: 5
+    validations:
+      exit_code: 0
+      output_contains: "OK"
 
   # Command with output validation
   - name: service_health_check

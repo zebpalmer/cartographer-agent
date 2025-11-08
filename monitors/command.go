@@ -10,7 +10,31 @@ import (
 	"time"
 )
 
+const maxOutputLength = 200
+
+// truncateOutput truncates a string to maxOutputLength and adds ellipsis if needed
+func truncateOutput(s string) string {
+	if len(s) > maxOutputLength {
+		return s[:maxOutputLength] + "..."
+	}
+	return s
+}
+
 // checkCommand executes a custom command and validates the output
+//
+// SECURITY WARNING: This function executes arbitrary shell commands using 'sh -c'
+// without sanitization. Monitor configurations should only be loaded from trusted
+// sources (filesystem owned by root/admin). DO NOT load monitor configs from:
+// - User-provided input
+// - Untrusted network sources
+// - World-writable directories
+// - Any source that could be controlled by untrusted users
+//
+// The command string is passed directly to the shell, allowing:
+// - Command injection via shell metacharacters
+// - Arbitrary file system access with agent permissions
+// - Network operations
+// - Process execution
 func checkCommand(monitor Monitor) (MonitorStatus, string) {
 	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(monitor.Timeout)*time.Second)
@@ -44,18 +68,18 @@ func checkCommand(monitor Monitor) (MonitorStatus, string) {
 		} else if ctx.Err() == context.DeadlineExceeded {
 			msg := fmt.Sprintf("Command timed out after %d seconds", monitor.Timeout)
 			if stdoutStr != "" || stderrStr != "" {
-				msg += fmt.Sprintf(". Output: %s", stdoutStr)
+				msg += fmt.Sprintf(". Output: %s", truncateOutput(stdoutStr))
 				if stderrStr != "" {
-					msg += fmt.Sprintf(", Stderr: %s", stderrStr)
+					msg += fmt.Sprintf(", Stderr: %s", truncateOutput(stderrStr))
 				}
 			}
 			return StatusCritical, msg
 		} else {
 			msg := fmt.Sprintf("Failed to execute command: %v", err)
 			if stdoutStr != "" || stderrStr != "" {
-				msg += fmt.Sprintf(". Output: %s", stdoutStr)
+				msg += fmt.Sprintf(". Output: %s", truncateOutput(stdoutStr))
 				if stderrStr != "" {
-					msg += fmt.Sprintf(", Stderr: %s", stderrStr)
+					msg += fmt.Sprintf(", Stderr: %s", truncateOutput(stderrStr))
 				}
 			}
 			return StatusUnknown, msg
@@ -69,9 +93,9 @@ func checkCommand(monitor Monitor) (MonitorStatus, string) {
 	}
 
 	if exitCode != expectedExitCode {
-		msg := fmt.Sprintf("Exit code %d (expected %d). Output: %s", exitCode, expectedExitCode, stdoutStr)
+		msg := fmt.Sprintf("Exit code %d (expected %d). Output: %s", exitCode, expectedExitCode, truncateOutput(stdoutStr))
 		if stderrStr != "" {
-			msg += fmt.Sprintf(", Stderr: %s", stderrStr)
+			msg += fmt.Sprintf(", Stderr: %s", truncateOutput(stderrStr))
 		}
 		return StatusCritical, msg
 	}
@@ -79,14 +103,14 @@ func checkCommand(monitor Monitor) (MonitorStatus, string) {
 	// Validate output contains expected string
 	if monitor.Validations != nil && monitor.Validations.OutputContains != "" {
 		if !strings.Contains(stdoutStr, monitor.Validations.OutputContains) {
-			return StatusCritical, fmt.Sprintf("Output does not contain expected string: '%s'. Got: %s", monitor.Validations.OutputContains, stdoutStr)
+			return StatusCritical, fmt.Sprintf("Output does not contain expected string: '%s'. Got: %s", monitor.Validations.OutputContains, truncateOutput(stdoutStr))
 		}
 	}
 
 	// Validate output does NOT contain specified string
 	if monitor.Validations != nil && monitor.Validations.OutputNotContains != "" {
 		if strings.Contains(stdoutStr, monitor.Validations.OutputNotContains) {
-			return StatusCritical, fmt.Sprintf("Output contains unexpected string: '%s'. Got: %s", monitor.Validations.OutputNotContains, stdoutStr)
+			return StatusCritical, fmt.Sprintf("Output contains unexpected string: '%s'. Got: %s", monitor.Validations.OutputNotContains, truncateOutput(stdoutStr))
 		}
 	}
 
@@ -97,26 +121,21 @@ func checkCommand(monitor Monitor) (MonitorStatus, string) {
 			return StatusUnknown, fmt.Sprintf("Invalid regex pattern: %v", err)
 		}
 		if !matched {
-			return StatusCritical, fmt.Sprintf("Output does not match regex: '%s'. Got: %s", monitor.Validations.OutputRegex, stdoutStr)
+			return StatusCritical, fmt.Sprintf("Output does not match regex: '%s'. Got: %s", monitor.Validations.OutputRegex, truncateOutput(stdoutStr))
 		}
 	}
 
 	// Validate stderr contains expected string
 	if monitor.Validations != nil && monitor.Validations.ErrorContains != "" {
 		if !strings.Contains(stderrStr, monitor.Validations.ErrorContains) {
-			return StatusCritical, fmt.Sprintf("Stderr does not contain expected string: '%s'. Got: %s", monitor.Validations.ErrorContains, stderrStr)
+			return StatusCritical, fmt.Sprintf("Stderr does not contain expected string: '%s'. Got: %s", monitor.Validations.ErrorContains, truncateOutput(stderrStr))
 		}
 	}
 
 	// Build success message
 	message := fmt.Sprintf("Command executed successfully (exit code %d)", exitCode)
 	if stdoutStr != "" {
-		// Truncate output if too long
-		if len(stdoutStr) > 100 {
-			message = fmt.Sprintf("%s. Output: %s...", message, stdoutStr[:100])
-		} else {
-			message = fmt.Sprintf("%s. Output: %s", message, stdoutStr)
-		}
+		message = fmt.Sprintf("%s. Output: %s", message, truncateOutput(stdoutStr))
 	}
 
 	return StatusOK, message
