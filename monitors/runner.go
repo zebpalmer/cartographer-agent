@@ -64,6 +64,10 @@ type MonitorConfig struct {
 
 	// Systemd-specific
 	Target string `json:"target,omitempty"`
+
+	// Command-specific
+	Command    string `json:"command,omitempty"`
+	WorkingDir string `json:"working_dir,omitempty"`
 }
 
 // MonitorReport represents the full report sent to cartographer
@@ -205,6 +209,8 @@ func runMonitorCheck(monitor Monitor) MonitorResult {
 		status, message = checkPort(monitor)
 	case "systemd":
 		status, message = checkSystemd(monitor)
+	case "command":
+		status, message = checkCommand(monitor)
 	default:
 		status = StatusUnknown
 		message = fmt.Sprintf("Unknown monitor type: %s", monitor.Type)
@@ -228,6 +234,8 @@ func runMonitorCheck(monitor Monitor) MonitorResult {
 		Host:            monitor.Host,
 		Protocol:        monitor.Protocol,
 		Target:          monitor.Target,
+		Command:         monitor.Command,
+		WorkingDir:      monitor.WorkingDir,
 	}
 
 	return MonitorResult{

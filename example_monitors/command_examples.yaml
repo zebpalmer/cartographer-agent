@@ -1,0 +1,103 @@
+# SECURITY WARNING: Command monitors execute arbitrary shell commands.
+# Only load monitor configurations from trusted sources (root-owned files).
+# Do not accept monitor configs from user input or untrusted sources.
+
+monitors:
+  # Simple echo test
+  - name: echo_test
+    type: command
+    description: Simple echo test
+    priority: low
+    command: "echo 'Hello World'"
+    timeout: 5
+    validations:
+      exit_code: 0
+      output_contains: "Hello"
+
+  # Check system uptime
+  - name: system_uptime
+    type: command
+    description: Check system uptime
+    priority: info
+    command: "uptime"
+    timeout: 5
+    validations:
+      exit_code: 0
+
+  # Basic command execution with exit code validation
+  - name: disk_space_check
+    type: command
+    description: Extract disk usage percentage
+    priority: high
+    command: "df -h / | tail -n 1 | awk '{print $5}' | sed 's/%//'"
+    timeout: 5
+    validations:
+      exit_code: 0
+      output_regex: "^[0-9]+$"
+
+  # Disk space check with actual threshold validation
+  - name: disk_space_threshold_check
+    type: command
+    description: Ensure disk usage is below 80%
+    priority: high
+    command: "usage=$(df / | tail -n 1 | awk '{print $5}' | sed 's/%//'); [ $usage -lt 80 ] && echo 'OK' || exit 1"
+    timeout: 5
+    validations:
+      exit_code: 0
+      output_contains: "OK"
+
+  # Command with output validation
+  - name: service_health_check
+    type: command
+    description: Custom health check script
+    priority: critical
+    command: "curl -s localhost:8080/health | jq -r '.status'"
+    timeout: 10
+    validations:
+      exit_code: 0
+      output_contains: "healthy"
+
+  # Command with working directory
+  - name: git_status_check
+    type: command
+    description: Ensure git repo is clean
+    priority: medium
+    command: "git status --porcelain"
+    working_dir: /home/app
+    timeout: 5
+    validations:
+      exit_code: 0
+      output_not_contains: "M "
+
+  # Command checking file existence
+  - name: config_file_exists
+    type: command
+    description: Verify critical config file exists
+    priority: critical
+    command: "test -f /etc/app/config.yml && echo 'exists'"
+    timeout: 5
+    validations:
+      exit_code: 0
+      output_contains: "exists"
+
+  # Command checking process count
+  - name: nginx_processes
+    type: command
+    description: Ensure nginx has running processes
+    priority: high
+    command: "pgrep nginx | wc -l"
+    timeout: 5
+    validations:
+      exit_code: 0
+      output_regex: "^[1-9][0-9]*$"
+
+  # Command with error output validation
+  - name: backup_validation
+    type: command
+    description: Validate backup completed successfully
+    priority: high
+    command: "/usr/local/bin/check_backup.sh"
+    timeout: 30
+    validations:
+      exit_code: 0
+      output_contains: "backup completed"

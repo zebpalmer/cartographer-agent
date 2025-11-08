@@ -43,6 +43,10 @@ type Monitor struct {
 
 	// Systemd-specific fields
 	Target string `yaml:"target" json:"target,omitempty"`
+
+	// Command-specific fields
+	Command    string `yaml:"command" json:"command,omitempty"`
+	WorkingDir string `yaml:"working_dir" json:"working_dir,omitempty"`
 }
 
 // Validations represents validation rules for monitors (type-specific fields)
@@ -57,6 +61,13 @@ type Validations struct {
 	State        string `yaml:"state" json:"state,omitempty"`
 	Enabled      *bool  `yaml:"enabled" json:"enabled,omitempty"`
 	RestartCount *int   `yaml:"restart_count" json:"restart_count,omitempty"`
+
+	// Command validations
+	ExitCode          *int   `yaml:"exit_code" json:"exit_code,omitempty"`
+	OutputContains    string `yaml:"output_contains" json:"output_contains,omitempty"`
+	OutputRegex       string `yaml:"output_regex" json:"output_regex,omitempty"`
+	OutputNotContains string `yaml:"output_not_contains" json:"output_not_contains,omitempty"`
+	ErrorContains     string `yaml:"error_contains" json:"error_contains,omitempty"`
 }
 
 // ApplyDefaults applies default values to a monitor configuration
@@ -122,6 +133,21 @@ func (m *Monitor) ApplyDefaults() {
 			}
 		}
 	}
+
+	// Command defaults
+	if m.Type == "command" {
+		if m.Validations == nil {
+			defaultExitCode := 0
+			m.Validations = &Validations{
+				ExitCode: &defaultExitCode,
+			}
+		} else {
+			if m.Validations.ExitCode == nil {
+				defaultExitCode := 0
+				m.Validations.ExitCode = &defaultExitCode
+			}
+		}
+	}
 }
 
 // Validate checks if a monitor configuration is valid
@@ -133,9 +159,9 @@ func (m *Monitor) Validate() error {
 		return fmt.Errorf("monitor type is required for '%s'", m.Name)
 	}
 
-	validTypes := map[string]bool{"http": true, "port": true, "systemd": true}
+	validTypes := map[string]bool{"http": true, "port": true, "systemd": true, "command": true}
 	if !validTypes[m.Type] {
-		return fmt.Errorf("invalid monitor type '%s' for '%s', must be http, port, or systemd", m.Type, m.Name)
+		return fmt.Errorf("invalid monitor type '%s' for '%s', must be http, port, systemd, or command", m.Type, m.Name)
 	}
 
 	validPriorities := map[string]bool{"critical": true, "high": true, "medium": true, "low": true, "info": true}
@@ -163,6 +189,10 @@ func (m *Monitor) Validate() error {
 	case "systemd":
 		if m.Target == "" {
 			return fmt.Errorf("target is required for systemd monitor '%s'", m.Name)
+		}
+	case "command":
+		if m.Command == "" {
+			return fmt.Errorf("command is required for command monitor '%s'", m.Name)
 		}
 	}
 
