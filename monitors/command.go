@@ -33,19 +33,34 @@ func checkCommand(monitor Monitor) (MonitorStatus, string) {
 	err := cmd.Run()
 	exitCode := 0
 
-	// Get exit code
+	// Get stdout/stderr early for use in error messages
+	stdoutStr := strings.TrimSpace(stdout.String())
+	stderrStr := strings.TrimSpace(stderr.String())
+
+	// Get exit code and handle execution errors
 	if err != nil {
 		if exitError, ok := err.(*exec.ExitError); ok {
 			exitCode = exitError.ExitCode()
 		} else if ctx.Err() == context.DeadlineExceeded {
-			return StatusCritical, fmt.Sprintf("Command timed out after %d seconds", monitor.Timeout)
+			msg := fmt.Sprintf("Command timed out after %d seconds", monitor.Timeout)
+			if stdoutStr != "" || stderrStr != "" {
+				msg += fmt.Sprintf(". Output: %s", stdoutStr)
+				if stderrStr != "" {
+					msg += fmt.Sprintf(", Stderr: %s", stderrStr)
+				}
+			}
+			return StatusCritical, msg
 		} else {
-			return StatusUnknown, fmt.Sprintf("Failed to execute command: %v", err)
+			msg := fmt.Sprintf("Failed to execute command: %v", err)
+			if stdoutStr != "" || stderrStr != "" {
+				msg += fmt.Sprintf(". Output: %s", stdoutStr)
+				if stderrStr != "" {
+					msg += fmt.Sprintf(", Stderr: %s", stderrStr)
+				}
+			}
+			return StatusUnknown, msg
 		}
 	}
-
-	stdoutStr := strings.TrimSpace(stdout.String())
-	stderrStr := strings.TrimSpace(stderr.String())
 
 	// Validate exit code
 	expectedExitCode := 0
@@ -54,7 +69,11 @@ func checkCommand(monitor Monitor) (MonitorStatus, string) {
 	}
 
 	if exitCode != expectedExitCode {
-		return StatusCritical, fmt.Sprintf("Exit code %d (expected %d). Output: %s", exitCode, expectedExitCode, stdoutStr)
+		msg := fmt.Sprintf("Exit code %d (expected %d). Output: %s", exitCode, expectedExitCode, stdoutStr)
+		if stderrStr != "" {
+			msg += fmt.Sprintf(", Stderr: %s", stderrStr)
+		}
+		return StatusCritical, msg
 	}
 
 	// Validate output contains expected string
