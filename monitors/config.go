@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -261,9 +260,4 @@ func loadMonitorFile(path string) ([]Monitor, error) {
 	}
 
 	return monitorFile.Monitors, nil
-}
-
-// GetMonitorEndpoint returns the full URL for posting monitor results
-func GetMonitorEndpoint(baseURL string) string {
-	return strings.TrimSuffix(baseURL, "/") + "/monitoring"
 }

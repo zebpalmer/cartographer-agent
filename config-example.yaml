@@ -1,14 +1,13 @@
-url: http://localhost:8090/api/agent
-token: SOME_RANDOM_LONG_STRING
+nats_url: "tls://nats.example.com:4222"
+nats_nkey_seed: "NKEY SEED STRING HERE"
 # fqdn: dev-host.example.com # will override detected fqdn
-interval: 60
 daemonize: true
 gzip: true
 interval_minutes: 10
 jitter_seconds: 60
 log_level: info
 
-release_url: "https://lcg-cartographer.nyc3.digitaloceanspaces.com/cartographer-agent-go/v{{.version}}/cartographer-agent_{{.osType}}-{{.arch}}"
+release_url: "RELEASE URL HERE"
 monitors_dir: "./example_monitors"  # defaults to "/etc/cartographer/monitors.d"
 
 yaml_files:
@@ -18,4 +17,3 @@ json_commands:
   - name: teleport_nodes
     command: "/usr/local/bin/tctl nodes ls -v --format json"
     timeout: 10
-

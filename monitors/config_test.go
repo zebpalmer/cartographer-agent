@@ -239,35 +239,6 @@ func TestApplyDefaults(t *testing.T) {
 	}
 }
 
-func TestMonitorEndpoint(t *testing.T) {
-	tests := []struct {
-		baseURL  string
-		expected string
-	}{
-		{
-			baseURL:  "http://example.com",
-			expected: "http://example.com/monitoring",
-		},
-		{
-			baseURL:  "http://example.com/",
-			expected: "http://example.com/monitoring",
-		},
-		{
-			baseURL:  "https://api.example.com/v1",
-			expected: "https://api.example.com/v1/monitoring",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.baseURL, func(t *testing.T) {
-			result := GetMonitorEndpoint(tt.baseURL)
-			if result != tt.expected {
-				t.Errorf("expected %q, got %q", tt.expected, result)
-			}
-		})
-	}
-}
-
 // Helper function to check if a string contains a substring
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||

@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"os"
 	"time"
+
+	"github.com/nats-io/nats.go"
 )
 
 // MonitorStatus represents the status of a monitor check
@@ -77,7 +79,7 @@ type MonitorReport struct {
 }
 
 // Run is the main entry point for the monitoring system
-func Run(config configuration.Config, version string) {
+func Run(config configuration.Config, version string, nc *nats.Conn) {
 	slog.Info("Starting monitoring system",
 		slog.String("monitors_dir", config.MonitorsDir),
 		slog.String("version", version),
@@ -91,16 +93,16 @@ func Run(config configuration.Config, version string) {
 	defer ticker.Stop()
 
 	// Run immediately on start
-	runMonitoringCycle(config, fqdn)
+	runMonitoringCycle(config, fqdn, nc)
 
 	// Then run every minute
 	for range ticker.C {
-		runMonitoringCycle(config, fqdn)
+		runMonitoringCycle(config, fqdn, nc)
 	}
 }
 
 // runMonitoringCycle executes one complete monitoring cycle
-func runMonitoringCycle(config configuration.Config, fqdn string) {
+func runMonitoringCycle(config configuration.Config, fqdn string, nc *nats.Conn) {
 	slog.Debug("Starting monitoring cycle")
 
 	// Load monitor configurations
@@ -152,8 +154,8 @@ func runMonitoringCycle(config configuration.Config, fqdn string) {
 		Monitors: results,
 	}
 
-	// Send report to cartographer
-	if err := sendReport(config, report); err != nil {
+	// Send report via NATS
+	if err := sendReport(config, report, nc); err != nil {
 		slog.Error("Failed to send monitoring report", slog.String("error", err.Error()))
 	} else {
 		slog.Debug("Monitoring report sent successfully")
@@ -258,8 +260,8 @@ func runMonitorCheck(monitor Monitor) MonitorResult {
 	}
 }
 
-// sendReport posts the monitor report to cartographer
-func sendReport(config configuration.Config, report MonitorReport) error {
+// sendReport publishes the monitor report via NATS
+func sendReport(config configuration.Config, report MonitorReport, nc *nats.Conn) error {
 	if config.DRYRUN {
 		jsonData, _ := json.MarshalIndent(report, "", "  ")
 		fmt.Println("DRYRUN - Would send monitoring report:")
@@ -267,21 +269,7 @@ func sendReport(config configuration.Config, report MonitorReport) error {
 		return nil
 	}
 
-	endpoint := GetMonitorEndpoint(config.URL)
-
-	// Marshal to JSON
-	jsonData, err := json.Marshal(report)
-	if err != nil {
-		return fmt.Errorf("failed to marshal report: %w", err)
-	}
-
-	// Use common PostReport function
-	_, err = common.PostReport(endpoint, jsonData, config.Token, config.Gzip)
-	if err != nil {
-		return fmt.Errorf("failed to post monitoring report: %w", err)
-	}
-
-	return nil
+	return common.PublishJSON(nc, "agent.monitoring", report, false)
 }
 
 // getFQDN returns the FQDN for this agent, using config override if set

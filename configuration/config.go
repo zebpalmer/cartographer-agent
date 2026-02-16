@@ -24,12 +24,12 @@ type JSONCommand struct {
 
 // Config represents the configuration for the agent
 type Config struct {
-	URL              string           `yaml:"url"`
+	NatsURL          string           `yaml:"nats_url"`
+	NatsNkeySeed     string           `yaml:"nats_nkey_seed"`
 	IntervalMinutes  int              `yaml:"interval_minutes"`
 	JitterSeconds    int              `yaml:"jitter_seconds"`
 	Daemonize        bool             `yaml:"daemonize"`
 	FQDN             string           `yaml:"fqdn"`
-	Token            string           `yaml:"token"`
 	YamlFiles        []ConfigYamlFile `yaml:"yaml_files"`
 	JSONCommands     []JSONCommand    `yaml:"json_commands"`
 	Gzip             bool             `yaml:"gzip"`
@@ -87,11 +87,11 @@ func ValidateConfig(config Config) error {
 		return nil
 	}
 
-	if config.URL == "" {
-		return errors.New("URL must be provided unless running in dry-run mode")
+	if config.NatsURL == "" {
+		return errors.New("nats_url must be provided unless running in dry-run mode")
 	}
-	if config.Token == "" {
-		return errors.New("token must be provided")
+	if config.NatsNkeySeed == "" {
+		return errors.New("nats_nkey_seed must be provided unless running in dry-run mode")
 	}
 
 	if config.Daemonize && config.IntervalMinutes < 1 {

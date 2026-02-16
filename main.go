@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cartographer-go-agent/common"
 	"cartographer-go-agent/configuration"
 	"cartographer-go-agent/internal"
 	"cartographer-go-agent/monitors"
@@ -9,6 +10,8 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+
+	"github.com/nats-io/nats.go"
 )
 
 var (
@@ -23,7 +26,6 @@ func BuildVersion() string {
 
 // getLogLevelFromConfig maps the log level string from config to slog levels and normalizes the input to lowercase.
 func getLogLevelFromConfig(logLevel string) slog.Level {
-	// Normalize the log level input to lowercase
 	switch strings.ToLower(logLevel) {
 	case "debug":
 		return slog.LevelDebug
@@ -34,7 +36,6 @@ func getLogLevelFromConfig(logLevel string) slog.Level {
 	case "error":
 		return slog.LevelError
 	default:
-		// Default to info level if not recognized
 		return slog.LevelInfo
 	}
 }
@@ -42,8 +43,8 @@ func getLogLevelFromConfig(logLevel string) slog.Level {
 // main is the entry point for the agent
 func main() {
 	configPath := flag.String("config", "", "Path to cartographer agent config file")
-	token := flag.String("token", "", "Agent Token")
-	serverURL := flag.String("url", "", "URL of Cartographer Server")
+	natsURLFlag := flag.String("nats-url", "", "NATS server URL (e.g., tls://nats.example.com:4222)")
+	natsNkeySeedFlag := flag.String("nats-nkey-seed", "", "NATS NKey seed for authentication")
 	daemonize := flag.Bool("daemonize", false, "Continue running as a daemon")
 	intervalMinutes := flag.Int("interval_minutes", 15, "How often reports should be sent in minutes")
 	fqdn := flag.String("fqdn", "", "Override the FQDN sent to cartographer")
@@ -68,11 +69,11 @@ func main() {
 			os.Exit(1)
 		}
 	} else {
-		config.URL = *serverURL
+		config.NatsURL = *natsURLFlag
+		config.NatsNkeySeed = *natsNkeySeedFlag
 		config.Daemonize = *daemonize
 		config.IntervalMinutes = *intervalMinutes
 		config.FQDN = *fqdn
-		config.Token = *token
 	}
 	config.DRYRUN = *dryrun
 
@@ -95,13 +96,24 @@ func main() {
 
 	collectorsList := internal.GetCollectors(config)
 
+	// Establish NATS connection (skip in dry-run mode)
+	var nc *nats.Conn
+	if !config.DRYRUN {
+		nc, err = common.ConnectNATS(config.NatsURL, config.NatsNkeySeed)
+		if err != nil {
+			slog.Error("Failed to connect to NATS", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+		defer nc.Close()
+	}
+
 	// Start monitoring system in background (if enabled)
 	if config.IsMonitoringEnabled() {
-		go monitors.Run(config, Version)
+		go monitors.Run(config, Version, nc)
 	} else {
 		slog.Info("Monitoring is disabled")
 	}
 
 	// Start main agent (existing collectors, heartbeat, updates)
-	internal.RunAgent(config, collectorsList, Version)
+	internal.RunAgent(config, collectorsList, Version, nc)
 }
