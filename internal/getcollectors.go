@@ -20,6 +20,7 @@ func GetCollectors(config configuration.Config) []*collectors.Collector {
 		collectors.DiskUsageCollector(20*time.Minute, &config),
 		collectors.UUIDCollector(30*time.Minute, &config),
 		collectors.NessusCollector(15*time.Minute, &config),
+		collectors.PublicIPCollector(1*time.Hour, &config),
 	}
 
 	// loop over any desired YAML file sources in the configuration and create a collector for them

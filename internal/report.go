@@ -22,7 +22,6 @@ func buildDataReport(config configuration.Config, collectorsList []*collectors.C
 		"agent_version": version,
 		"hostname":      hostname,
 		"fqdn":          fqdn,
-		"ip":            common.GetOutboundIP(),
 	}
 
 	for _, collector := range collectorsList {

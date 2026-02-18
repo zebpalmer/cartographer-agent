@@ -15,7 +15,6 @@ type heartbeat struct {
 	FQDN         string `json:"fqdn"`
 	AgentVersion string `json:"agent_version"`
 	Timestamp    string `json:"timestamp"`
-	IP           string `json:"ip,omitempty"`
 }
 
 // HeartbeatTask publishes a heartbeat to NATS
@@ -26,7 +25,6 @@ func HeartbeatTask(config configuration.Config, version string, nc *nats.Conn) {
 		FQDN:         fqdn,
 		AgentVersion: version,
 		Timestamp:    time.Now().UTC().Format(time.RFC3339),
-		IP:           common.GetOutboundIP(),
 	}
 
 	if config.DRYRUN {
