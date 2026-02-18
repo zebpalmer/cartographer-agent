@@ -18,9 +18,9 @@ type PublicIPs struct {
 }
 
 const (
-	ipifyV4URL     = "https://api.ipify.org"
-	ipifyV6URL     = "https://api6.ipify.org"
-	ipifyTimeout   = 10 * time.Second
+	ipifyV4URL   = "https://api.ipify.org"
+	ipifyV6URL   = "https://api6.ipify.org"
+	ipifyTimeout = 10 * time.Second
 )
 
 // fetchPublicIPOnce makes a single HTTP GET request to the given URL and
