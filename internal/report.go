@@ -24,24 +24,37 @@ func buildDataReport(config configuration.Config, collectorsList []*collectors.C
 		"fqdn":          fqdn,
 	}
 
+	collectorStatus := make(map[string]collectors.CollectorStatus)
+
 	for _, collector := range collectorsList {
 		collectorData, err := collector.Collect()
 		if err != nil {
 			if errors.Is(err, collectors.ErrCollectorSkipped) {
-				slog.Info("Skipping collector due to unsupported OS",
+				slog.Info("Collector skipped",
 					slog.String("collector_name", collector.Name),
 				)
-				continue
+			} else {
+				slog.Error("Error collecting data",
+					slog.String("collector_name", collector.Name),
+					slog.String("error", err.Error()),
+					slog.Float64("duration_ms", collector.LastStatus.Duration),
+				)
 			}
-			slog.Error("Error collecting data",
-				slog.String("collector_name", collector.Name),
-				slog.String("error", err.Error()),
-			)
+			collectorStatus[collector.Name] = collector.LastStatus
 			continue
 		}
 
+		slog.Debug("Collector completed",
+			slog.String("collector_name", collector.Name),
+			slog.Float64("duration_ms", collector.LastStatus.Duration),
+			slog.Bool("cached", collector.LastStatus.Cached),
+		)
+
 		data[collector.Name] = collectorData
+		collectorStatus[collector.Name] = collector.LastStatus
 	}
+
+	data["collector_status"] = collectorStatus
 
 	return data
 }
