@@ -147,6 +147,15 @@ func parseNginxSites(configPath string) ([]NginxSite, error) {
 		return nil, err
 	}
 
+	// First pass: collect all upstream block definitions
+	upstreams := make(map[string][]string)
+	for _, cfgFile := range configFiles {
+		for name, servers := range parseUpstreamBlocks(cfgFile) {
+			upstreams[name] = servers
+		}
+	}
+
+	// Second pass: parse server blocks
 	var sites []NginxSite
 	for _, cfgFile := range configFiles {
 		fileSites, err := parseServerBlocks(cfgFile)
@@ -158,6 +167,13 @@ func parseNginxSites(configPath string) ([]NginxSite, error) {
 			continue
 		}
 		sites = append(sites, fileSites...)
+	}
+
+	// Resolve proxy_pass references against upstream blocks
+	for i := range sites {
+		if sites[i].ProxyPass != "" {
+			sites[i].ProxyPass = resolveProxyPass(sites[i].ProxyPass, upstreams)
+		}
 	}
 
 	return sites, nil
@@ -219,6 +235,97 @@ func contains(slice []string, item string) bool {
 		}
 	}
 	return false
+}
+
+// parseUpstreamBlocks extracts upstream block definitions from a config file.
+// Returns a map of upstream name → list of server addresses.
+func parseUpstreamBlocks(filePath string) map[string][]string {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+
+	upstreams := make(map[string][]string)
+	scanner := bufio.NewScanner(file)
+
+	upstreamStartRe := regexp.MustCompile(`^\s*upstream\s+(\S+)\s*\{`)
+	serverRe := regexp.MustCompile(`^\s*server\s+(\S+)`)
+
+	var inUpstream bool
+	var currentName string
+	var braceDepth int
+
+	for scanner.Scan() {
+		trimmed := strings.TrimSpace(scanner.Text())
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+
+		if !inUpstream {
+			if matches := upstreamStartRe.FindStringSubmatch(trimmed); matches != nil {
+				inUpstream = true
+				currentName = matches[1]
+				braceDepth = 1
+				continue
+			}
+		} else {
+			braceDepth += strings.Count(trimmed, "{")
+			braceDepth -= strings.Count(trimmed, "}")
+
+			if matches := serverRe.FindStringSubmatch(trimmed); matches != nil {
+				addr := strings.TrimRight(matches[1], ";")
+				upstreams[currentName] = append(upstreams[currentName], addr)
+			}
+
+			if braceDepth <= 0 {
+				inUpstream = false
+				currentName = ""
+			}
+		}
+	}
+
+	return upstreams
+}
+
+// resolveProxyPass resolves a proxy_pass value against known upstream blocks.
+// Handles: $variable, http://upstream_name, http://upstream_name/path
+func resolveProxyPass(proxyPass string, upstreams map[string][]string) string {
+	if proxyPass == "" || len(upstreams) == 0 {
+		return proxyPass
+	}
+
+	// Handle $variable references
+	if strings.HasPrefix(proxyPass, "$") {
+		name := strings.TrimPrefix(proxyPass, "$")
+		if servers, ok := upstreams[name]; ok && len(servers) > 0 {
+			return "http://" + strings.Join(servers, ", ")
+		}
+		return proxyPass
+	}
+
+	// Handle http(s)://upstream_name or http(s)://upstream_name/path
+	for _, scheme := range []string{"http://", "https://"} {
+		if !strings.HasPrefix(proxyPass, scheme) {
+			continue
+		}
+		rest := strings.TrimPrefix(proxyPass, scheme)
+		parts := strings.SplitN(rest, "/", 2)
+		hostPart := parts[0]
+
+		if servers, ok := upstreams[hostPart]; ok && len(servers) > 0 {
+			path := ""
+			if len(parts) > 1 {
+				path = "/" + parts[1]
+			}
+			if len(servers) == 1 {
+				return scheme + servers[0] + path
+			}
+			return scheme + strings.Join(servers, ", ") + path
+		}
+	}
+
+	return proxyPass
 }
 
 // parseServerBlocks extracts server blocks from a single nginx config file

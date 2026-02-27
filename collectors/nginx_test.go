@@ -336,6 +336,150 @@ http {
 	}
 }
 
+func TestParseUpstreamBlocks(t *testing.T) {
+	tests := []struct {
+		name     string
+		config   string
+		expected map[string][]string
+	}{
+		{
+			name: "single upstream with one server",
+			config: `upstream audiolab {
+    server 127.0.0.1:4000;
+}`,
+			expected: map[string][]string{
+				"audiolab": {"127.0.0.1:4000"},
+			},
+		},
+		{
+			name: "upstream with multiple servers",
+			config: `upstream backend {
+    server 10.0.0.1:8080;
+    server 10.0.0.2:8080;
+}`,
+			expected: map[string][]string{
+				"backend": {"10.0.0.1:8080", "10.0.0.2:8080"},
+			},
+		},
+		{
+			name: "multiple upstreams",
+			config: `upstream app {
+    server 127.0.0.1:3000;
+}
+
+upstream api {
+    server 127.0.0.1:8080;
+    server 127.0.0.1:8081;
+}`,
+			expected: map[string][]string{
+				"app": {"127.0.0.1:3000"},
+				"api": {"127.0.0.1:8080", "127.0.0.1:8081"},
+			},
+		},
+		{
+			name: "upstream with weight and params stripped to address",
+			config: `upstream weighted {
+    server 10.0.0.1:8080;
+    server 10.0.0.2:8080;
+}`,
+			expected: map[string][]string{
+				"weighted": {"10.0.0.1:8080", "10.0.0.2:8080"},
+			},
+		},
+		{
+			name:     "no upstreams",
+			config:   `server { listen 80; server_name test.com; }`,
+			expected: map[string][]string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			configFile := filepath.Join(tmpDir, "test.conf")
+			if err := os.WriteFile(configFile, []byte(tt.config), 0644); err != nil {
+				t.Fatalf("failed to write temp config: %v", err)
+			}
+
+			upstreams := parseUpstreamBlocks(configFile)
+			if !reflect.DeepEqual(upstreams, tt.expected) {
+				t.Errorf("parseUpstreamBlocks() =\n  %v\nwant\n  %v", upstreams, tt.expected)
+			}
+		})
+	}
+}
+
+func TestResolveProxyPass(t *testing.T) {
+	upstreams := map[string][]string{
+		"audiolab": {"127.0.0.1:4000"},
+		"backend":  {"10.0.0.1:8080", "10.0.0.2:8080"},
+	}
+
+	tests := []struct {
+		name      string
+		proxyPass string
+		expected  string
+	}{
+		{"direct URL unchanged", "http://localhost:3000/", "http://localhost:3000/"},
+		{"variable resolved", "$audiolab", "http://127.0.0.1:4000"},
+		{"variable multi-server", "$backend", "http://10.0.0.1:8080, 10.0.0.2:8080"},
+		{"named upstream via http", "http://audiolab", "http://127.0.0.1:4000"},
+		{"named upstream with path", "http://audiolab/api", "http://127.0.0.1:4000/api"},
+		{"named upstream multi-server", "http://backend", "http://10.0.0.1:8080, 10.0.0.2:8080"},
+		{"unknown variable unchanged", "$unknown", "$unknown"},
+		{"empty unchanged", "", ""},
+		{"https upstream", "https://audiolab", "https://127.0.0.1:4000"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := resolveProxyPass(tt.proxyPass, upstreams)
+			if result != tt.expected {
+				t.Errorf("resolveProxyPass(%q) = %q, want %q", tt.proxyPass, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestParseNginxSitesResolvesUpstreams(t *testing.T) {
+	tmpDir := t.TempDir()
+	sitesEnabled := filepath.Join(tmpDir, "sites-enabled")
+	os.MkdirAll(sitesEnabled, 0755)
+
+	// Config with upstream block and proxy_pass referencing it
+	siteConfig := `upstream audiolab {
+    server 127.0.0.1:4000;
+}
+
+server {
+    listen 443 ssl;
+    server_name audiolab-qa.simucase.com;
+
+    location / {
+        proxy_pass $audiolab;
+    }
+}
+`
+	os.WriteFile(filepath.Join(sitesEnabled, "audiolab"), []byte(siteConfig), 0644)
+
+	mainConfig := filepath.Join(tmpDir, "nginx.conf")
+	mainContent := "events {}\nhttp {\n    include " + filepath.Join(sitesEnabled, "*") + ";\n}\n"
+	os.WriteFile(mainConfig, []byte(mainContent), 0644)
+
+	sites, err := parseNginxSites(mainConfig)
+	if err != nil {
+		t.Fatalf("parseNginxSites returned error: %v", err)
+	}
+
+	if len(sites) != 1 {
+		t.Fatalf("expected 1 site, got %d", len(sites))
+	}
+
+	if sites[0].ProxyPass != "http://127.0.0.1:4000" {
+		t.Errorf("proxy_pass = %q, want %q", sites[0].ProxyPass, "http://127.0.0.1:4000")
+	}
+}
+
 func TestNginxCollectorCreation(t *testing.T) {
 	collector := NginxCollector(5*time.Minute, nil)
 	if collector == nil {
