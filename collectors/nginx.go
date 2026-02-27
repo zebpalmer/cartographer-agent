@@ -23,12 +23,12 @@ type ProxyPassEntry struct {
 
 // NginxSite represents a single server block parsed from nginx config
 type NginxSite struct {
-	ServerNames []string         `json:"server_names"`
-	ListenPorts []string         `json:"listen_ports"`
-	Root        string           `json:"root,omitempty"`
-	SSL         bool             `json:"ssl"`
-	ProxyPasses []ProxyPassEntry `json:"proxy_passes,omitempty"`
-	ConfigFile  string           `json:"config_file"`
+	ServerNames []string          `json:"server_names"`
+	ListenPorts []string          `json:"listen_ports"`
+	Root        string            `json:"root,omitempty"`
+	SSL         bool              `json:"ssl"`
+	ProxyPasses []ProxyPassEntry  `json:"proxy_passes,omitempty"`
+	ConfigFile  string            `json:"config_file"`
 	setVars     map[string]string // unexported: used during parsing for $variable resolution
 }
 
