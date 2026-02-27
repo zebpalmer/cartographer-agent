@@ -58,8 +58,8 @@ func collectNginx() *NginxInfo {
 	}
 
 	// Find nginx binary
-	nginxPath, err := exec.LookPath("nginx")
-	if err != nil {
+	nginxPath := findNginxBinary()
+	if nginxPath == "" {
 		return info
 	}
 	info.Installed = true
@@ -90,6 +90,22 @@ func collectNginx() *NginxInfo {
 	}
 
 	return info
+}
+
+func findNginxBinary() string {
+	if path, err := exec.LookPath("nginx"); err == nil {
+		return path
+	}
+	for _, path := range []string{
+		"/usr/sbin/nginx",
+		"/usr/local/sbin/nginx",
+		"/usr/local/nginx/sbin/nginx",
+	} {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	return ""
 }
 
 func getNginxVersion(nginxPath string) (string, error) {
