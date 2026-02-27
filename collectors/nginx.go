@@ -15,14 +15,21 @@ import (
 	"time"
 )
 
+// ProxyPassEntry represents a proxy_pass directive with its location path
+type ProxyPassEntry struct {
+	Path     string `json:"path"`
+	Upstream string `json:"upstream"`
+}
+
 // NginxSite represents a single server block parsed from nginx config
 type NginxSite struct {
-	ServerNames []string `json:"server_names"`
-	ListenPorts []string `json:"listen_ports"`
-	Root        string   `json:"root,omitempty"`
-	SSL         bool     `json:"ssl"`
-	ProxyPass   string   `json:"proxy_pass,omitempty"`
-	ConfigFile  string   `json:"config_file"`
+	ServerNames []string         `json:"server_names"`
+	ListenPorts []string         `json:"listen_ports"`
+	Root        string           `json:"root,omitempty"`
+	SSL         bool             `json:"ssl"`
+	ProxyPasses []ProxyPassEntry `json:"proxy_passes,omitempty"`
+	ConfigFile  string           `json:"config_file"`
+	setVars     map[string]string // unexported: used during parsing for $variable resolution
 }
 
 // NginxInfo represents the collected nginx information
@@ -157,6 +164,8 @@ func getNginxConfigPath(nginxPath string) string {
 
 // parseNginxSites reads the main nginx config and any included site configs to extract server blocks
 func parseNginxSites(configPath string) ([]NginxSite, error) {
+	nginxConfigDir := filepath.Dir(configPath)
+
 	// Collect all config files to parse (main config + includes)
 	configFiles, err := resolveNginxIncludes(configPath)
 	if err != nil {
@@ -171,10 +180,10 @@ func parseNginxSites(configPath string) ([]NginxSite, error) {
 		}
 	}
 
-	// Second pass: parse server blocks
+	// Second pass: parse server blocks (with include inlining for nested includes)
 	var sites []NginxSite
 	for _, cfgFile := range configFiles {
-		fileSites, err := parseServerBlocks(cfgFile)
+		fileSites, err := parseServerBlocks(cfgFile, nginxConfigDir)
 		if err != nil {
 			slog.Debug("Failed to parse nginx config file",
 				slog.String("file", cfgFile),
@@ -185,10 +194,13 @@ func parseNginxSites(configPath string) ([]NginxSite, error) {
 		sites = append(sites, fileSites...)
 	}
 
-	// Resolve proxy_pass references against upstream blocks
+	// Resolve proxy_pass upstream references and set variables
 	for i := range sites {
-		if sites[i].ProxyPass != "" {
-			sites[i].ProxyPass = resolveProxyPass(sites[i].ProxyPass, upstreams)
+		for j := range sites[i].ProxyPasses {
+			upstream := sites[i].ProxyPasses[j].Upstream
+			upstream = resolveSetVars(upstream, sites[i].setVars)
+			upstream = resolveProxyPass(upstream, upstreams)
+			sites[i].ProxyPasses[j].Upstream = upstream
 		}
 	}
 
@@ -344,29 +356,86 @@ func resolveProxyPass(proxyPass string, upstreams map[string][]string) string {
 	return proxyPass
 }
 
-// parseServerBlocks extracts server blocks from a single nginx config file
-func parseServerBlocks(filePath string) ([]NginxSite, error) {
-	file, err := os.Open(filePath)
+// resolveSetVars replaces $variable references in a string using set directive values.
+// Longer variable names are matched first to avoid prefix overlap (e.g. $backend_host vs $backend).
+func resolveSetVars(value string, vars map[string]string) string {
+	if len(vars) == 0 || !strings.Contains(value, "$") {
+		return value
+	}
+	// Sort keys by length descending so longer names match first
+	keys := make([]string, 0, len(vars))
+	for k := range vars {
+		keys = append(keys, k)
+	}
+	for i := 0; i < len(keys)-1; i++ {
+		for j := i + 1; j < len(keys); j++ {
+			if len(keys[j]) > len(keys[i]) {
+				keys[i], keys[j] = keys[j], keys[i]
+			}
+		}
+	}
+	for _, k := range keys {
+		value = strings.ReplaceAll(value, "$"+k, vars[k])
+	}
+	return value
+}
+
+// resolveIncludeToLines reads all files matching a glob pattern and returns their lines.
+// Relative patterns are resolved against nginxConfigDir (the nginx prefix directory,
+// e.g. /etc/nginx/), not the including file's directory.
+func resolveIncludeToLines(pattern string, nginxConfigDir string) []string {
+	if !filepath.IsAbs(pattern) {
+		pattern = filepath.Join(nginxConfigDir, pattern)
+	}
+	globbed, err := filepath.Glob(pattern)
+	if err != nil || len(globbed) == 0 {
+		return nil
+	}
+	var lines []string
+	for _, f := range globbed {
+		content, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		lines = append(lines, strings.Split(string(content), "\n")...)
+	}
+	return lines
+}
+
+// parseServerBlocks extracts server blocks from a single nginx config file.
+// nginxConfigDir is the nginx prefix directory (e.g. /etc/nginx/) used to resolve
+// relative include paths found inside server blocks.
+func parseServerBlocks(filePath string, nginxConfigDir string) ([]NginxSite, error) {
+	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
 
+	lines := strings.Split(string(content), "\n")
 	var sites []NginxSite
-	scanner := bufio.NewScanner(file)
 
 	var inServer bool
 	var braceDepth int
 	var current *NginxSite
+
+	// locationStack tracks nested location paths with their brace depths
+	type locEntry struct {
+		path  string
+		depth int
+	}
+	var locationStack []locEntry
 
 	listenRe := regexp.MustCompile(`^\s*listen\s+(.+);`)
 	serverNameRe := regexp.MustCompile(`^\s*server_name\s+(.+);`)
 	rootRe := regexp.MustCompile(`^\s*root\s+(.+);`)
 	proxyPassRe := regexp.MustCompile(`^\s*proxy_pass\s+(.+);`)
 	sslCertRe := regexp.MustCompile(`^\s*ssl_certificate\s+`)
+	locationRe := regexp.MustCompile(`^\s*location\s+(?:=\s+|\^~\s+)?(/\S+)\s*\{`)
+	includeRe := regexp.MustCompile(`^\s*include\s+([^;]+);`)
+	setRe := regexp.MustCompile(`^\s*set\s+\$(\w+)\s+"?([^";]+)"?\s*;`)
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
 		trimmed := strings.TrimSpace(line)
 
 		// Skip comments and empty lines
@@ -374,7 +443,6 @@ func parseServerBlocks(filePath string) ([]NginxSite, error) {
 			continue
 		}
 
-		// Track brace depth
 		openBraces := strings.Count(trimmed, "{")
 		closeBraces := strings.Count(trimmed, "}")
 
@@ -384,12 +452,12 @@ func parseServerBlocks(filePath string) ([]NginxSite, error) {
 			braceDepth = 1
 			current = &NginxSite{
 				ConfigFile: filePath,
+				setVars:    make(map[string]string),
 			}
-			// Account for any extra braces on the same line
-			braceDepth += openBraces - 1 // -1 because we already counted the opening brace
+			locationStack = nil
+			braceDepth += openBraces - 1
 			braceDepth -= closeBraces
 			if braceDepth <= 0 {
-				// Single-line server block (unusual but handle it)
 				inServer = false
 				sites = append(sites, *current)
 				current = nil
@@ -397,65 +465,102 @@ func parseServerBlocks(filePath string) ([]NginxSite, error) {
 			continue
 		}
 
-		if inServer {
-			braceDepth += openBraces
-			braceDepth -= closeBraces
+		if !inServer {
+			continue
+		}
 
-			if current != nil {
-				// Parse listen directive
-				if matches := listenRe.FindStringSubmatch(line); matches != nil {
-					listen := strings.TrimSpace(matches[1])
-					current.ListenPorts = append(current.ListenPorts, listen)
-					if strings.Contains(listen, "ssl") {
-						current.SSL = true
-					}
+		// Inline includes found inside server blocks
+		if current != nil {
+			if matches := includeRe.FindStringSubmatch(trimmed); matches != nil {
+				pattern := strings.TrimSpace(matches[1])
+				included := resolveIncludeToLines(pattern, nginxConfigDir)
+				if len(included) > 0 {
+					// Insert included lines at the current position
+					tail := make([]string, len(lines)-i-1)
+					copy(tail, lines[i+1:])
+					lines = append(lines[:i+1], included...)
+					lines = append(lines, tail...)
 				}
+				continue
+			}
+		}
 
-				// Parse server_name directive
-				if matches := serverNameRe.FindStringSubmatch(line); matches != nil {
-					names := strings.Fields(strings.TrimSpace(matches[1]))
-					for _, name := range names {
-						if name != "_" && name != "" {
-							current.ServerNames = append(current.ServerNames, name)
-						}
-					}
-				}
+		braceDepth += openBraces
+		braceDepth -= closeBraces
 
-				// Parse root directive (only at server level, depth 1)
-				if braceDepth == 1 {
-					if matches := rootRe.FindStringSubmatch(line); matches != nil {
-						current.Root = strings.TrimSpace(matches[1])
-					}
-				}
-
-				// Parse proxy_pass directive
-				if matches := proxyPassRe.FindStringSubmatch(line); matches != nil {
-					if current.ProxyPass == "" {
-						current.ProxyPass = strings.TrimSpace(matches[1])
-					}
-				}
-
-				// Detect SSL from ssl_certificate directive
-				if sslCertRe.MatchString(line) {
+		if current != nil {
+			// Parse listen directive
+			if matches := listenRe.FindStringSubmatch(line); matches != nil {
+				listen := strings.TrimSpace(matches[1])
+				current.ListenPorts = append(current.ListenPorts, listen)
+				if strings.Contains(listen, "ssl") {
 					current.SSL = true
 				}
 			}
 
-			if braceDepth <= 0 {
-				inServer = false
-				if current != nil {
-					// Only include sites that have at least a listen or server_name
-					if len(current.ListenPorts) > 0 || len(current.ServerNames) > 0 {
-						sites = append(sites, *current)
+			// Parse server_name directive
+			if matches := serverNameRe.FindStringSubmatch(line); matches != nil {
+				names := strings.Fields(strings.TrimSpace(matches[1]))
+				for _, name := range names {
+					if name != "_" && name != "" {
+						current.ServerNames = append(current.ServerNames, name)
 					}
 				}
-				current = nil
+			}
+
+			// Parse root directive (only at server level, depth 1)
+			if braceDepth == 1 {
+				if matches := rootRe.FindStringSubmatch(line); matches != nil {
+					current.Root = strings.TrimSpace(matches[1])
+				}
+			}
+
+			// Track set directives for variable resolution
+			if matches := setRe.FindStringSubmatch(trimmed); matches != nil {
+				current.setVars[matches[1]] = matches[2]
+			}
+
+			// Track location blocks
+			if matches := locationRe.FindStringSubmatch(trimmed); matches != nil {
+				locationStack = append(locationStack, locEntry{
+					path:  matches[1],
+					depth: braceDepth,
+				})
+			}
+
+			// Pop location stack on closing braces
+			for len(locationStack) > 0 && braceDepth < locationStack[len(locationStack)-1].depth {
+				locationStack = locationStack[:len(locationStack)-1]
+			}
+
+			// Parse proxy_pass with location context
+			if matches := proxyPassRe.FindStringSubmatch(line); matches != nil {
+				path := "/"
+				if len(locationStack) > 0 {
+					path = locationStack[len(locationStack)-1].path
+				}
+				current.ProxyPasses = append(current.ProxyPasses, ProxyPassEntry{
+					Path:     path,
+					Upstream: strings.TrimSpace(matches[1]),
+				})
+			}
+
+			// Detect SSL from ssl_certificate directive
+			if sslCertRe.MatchString(line) {
+				current.SSL = true
 			}
 		}
-	}
 
-	if err := scanner.Err(); err != nil {
-		return sites, err
+		if braceDepth <= 0 {
+			inServer = false
+			if current != nil {
+				if len(current.ListenPorts) > 0 || len(current.ServerNames) > 0 {
+					sites = append(sites, *current)
+				}
+			}
+			current = nil
+			locationStack = nil
+		}
 	}
 
 	return sites, nil

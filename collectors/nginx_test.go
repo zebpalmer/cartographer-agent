@@ -62,8 +62,10 @@ func TestParseServerBlocks(t *testing.T) {
 				{
 					ServerNames: []string{"api.example.com"},
 					ListenPorts: []string{"80"},
-					ProxyPass:   "http://localhost:3000",
-					SSL:         false,
+					ProxyPasses: []ProxyPassEntry{
+						{Path: "/", Upstream: "http://localhost:3000"},
+					},
+					SSL: false,
 				},
 			},
 		},
@@ -156,7 +158,7 @@ server {
 			},
 		},
 		{
-			name: "proxy pass with location blocks",
+			name: "multiple proxy_pass with location paths",
 			config: `server {
     listen 80;
     server_name multi.example.com;
@@ -173,8 +175,64 @@ server {
 				{
 					ServerNames: []string{"multi.example.com"},
 					ListenPorts: []string{"80"},
-					ProxyPass:   "http://backend:8080",
-					SSL:         false,
+					ProxyPasses: []ProxyPassEntry{
+						{Path: "/api", Upstream: "http://backend:8080"},
+					},
+					SSL: false,
+				},
+			},
+		},
+		{
+			name: "multiple location proxy_passes",
+			config: `server {
+    listen 443 ssl;
+    server_name app.example.com;
+
+    location / {
+        proxy_pass http://localhost:3000;
+    }
+
+    location /api {
+        proxy_pass http://localhost:8080;
+    }
+
+    location /ws {
+        proxy_pass http://localhost:9000;
+    }
+}`,
+			expected: []NginxSite{
+				{
+					ServerNames: []string{"app.example.com"},
+					ListenPorts: []string{"443 ssl"},
+					ProxyPasses: []ProxyPassEntry{
+						{Path: "/", Upstream: "http://localhost:3000"},
+						{Path: "/api", Upstream: "http://localhost:8080"},
+						{Path: "/ws", Upstream: "http://localhost:9000"},
+					},
+					SSL: true,
+				},
+			},
+		},
+		{
+			name: "set variable captured for later resolution",
+			config: `server {
+    listen 443 ssl;
+    server_name app.example.com;
+
+    set $backend "http://127.0.0.1:3000";
+
+    location / {
+        proxy_pass $backend;
+    }
+}`,
+			expected: []NginxSite{
+				{
+					ServerNames: []string{"app.example.com"},
+					ListenPorts: []string{"443 ssl"},
+					ProxyPasses: []ProxyPassEntry{
+						{Path: "/", Upstream: "$backend"},
+					},
+					SSL: true,
 				},
 			},
 		},
@@ -189,20 +247,87 @@ server {
 				t.Fatalf("failed to write temp config: %v", err)
 			}
 
-			sites, err := parseServerBlocks(configFile)
+			sites, err := parseServerBlocks(configFile, tmpDir)
 			if err != nil {
 				t.Fatalf("parseServerBlocks returned error: %v", err)
 			}
 
-			// Set ConfigFile on expected sites for comparison
+			// Set ConfigFile and setVars on expected sites for comparison
 			for i := range tt.expected {
 				tt.expected[i].ConfigFile = configFile
+				if tt.expected[i].setVars == nil {
+					tt.expected[i].setVars = make(map[string]string)
+				}
+			}
+			// Copy setVars from actual to expected for comparison (since we test
+			// set variable resolution separately via parseNginxSites)
+			for i := range sites {
+				if i < len(tt.expected) {
+					tt.expected[i].setVars = sites[i].setVars
+				}
 			}
 
 			if !reflect.DeepEqual(sites, tt.expected) {
 				t.Errorf("parseServerBlocks() =\n  %+v\nwant\n  %+v", sites, tt.expected)
 			}
 		})
+	}
+}
+
+func TestParseServerBlocksInlineIncludes(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create an include file with proxy_pass config (simulates AO-style includes)
+	includeContent := `location /api {
+    proxy_pass http://backend:8080;
+}
+
+location /static {
+    proxy_pass http://cdn:9000;
+}
+`
+	os.WriteFile(filepath.Join(tmpDir, "proxy_config_app"), []byte(includeContent), 0644)
+
+	// Create server config that includes the proxy config
+	siteConfig := `server {
+    listen 443 ssl;
+    server_name app.example.com;
+
+    include proxy_config_app;
+
+    location / {
+        proxy_pass http://localhost:3000;
+    }
+}
+`
+	configFile := filepath.Join(tmpDir, "site.conf")
+	os.WriteFile(configFile, []byte(siteConfig), 0644)
+
+	sites, err := parseServerBlocks(configFile, tmpDir)
+	if err != nil {
+		t.Fatalf("parseServerBlocks returned error: %v", err)
+	}
+
+	if len(sites) != 1 {
+		t.Fatalf("expected 1 site, got %d", len(sites))
+	}
+
+	if len(sites[0].ProxyPasses) != 3 {
+		t.Fatalf("expected 3 proxy_passes, got %d: %+v", len(sites[0].ProxyPasses), sites[0].ProxyPasses)
+	}
+
+	expected := []ProxyPassEntry{
+		{Path: "/api", Upstream: "http://backend:8080"},
+		{Path: "/static", Upstream: "http://cdn:9000"},
+		{Path: "/", Upstream: "http://localhost:3000"},
+	}
+	for i, exp := range expected {
+		if sites[0].ProxyPasses[i].Path != exp.Path {
+			t.Errorf("proxy_passes[%d].Path = %q, want %q", i, sites[0].ProxyPasses[i].Path, exp.Path)
+		}
+		if sites[0].ProxyPasses[i].Upstream != exp.Upstream {
+			t.Errorf("proxy_passes[%d].Upstream = %q, want %q", i, sites[0].ProxyPasses[i].Upstream, exp.Upstream)
+		}
 	}
 }
 
@@ -331,8 +456,14 @@ http {
 	if !sites[1].SSL {
 		t.Error("site 1 should have SSL")
 	}
-	if sites[1].ProxyPass != "http://localhost:8080" {
-		t.Errorf("site 1 proxy_pass = %v, want http://localhost:8080", sites[1].ProxyPass)
+	if len(sites[1].ProxyPasses) != 1 {
+		t.Fatalf("site 1 expected 1 proxy_pass, got %d", len(sites[1].ProxyPasses))
+	}
+	if sites[1].ProxyPasses[0].Path != "/" {
+		t.Errorf("site 1 proxy_passes[0].Path = %q, want /", sites[1].ProxyPasses[0].Path)
+	}
+	if sites[1].ProxyPasses[0].Upstream != "http://localhost:8080" {
+		t.Errorf("site 1 proxy_passes[0].Upstream = %q, want http://localhost:8080", sites[1].ProxyPasses[0].Upstream)
 	}
 }
 
@@ -441,6 +572,33 @@ func TestResolveProxyPass(t *testing.T) {
 	}
 }
 
+func TestResolveSetVars(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    string
+		vars     map[string]string
+		expected string
+	}{
+		{"no vars", "http://localhost:3000", nil, "http://localhost:3000"},
+		{"simple replacement", "$backend", map[string]string{"backend": "http://127.0.0.1:3000"}, "http://127.0.0.1:3000"},
+		{"no match", "$unknown", map[string]string{"backend": "http://127.0.0.1:3000"}, "$unknown"},
+		{"longer name matched first", "$backend_host", map[string]string{
+			"backend":      "http://127.0.0.1",
+			"backend_host": "http://10.0.0.1",
+		}, "http://10.0.0.1"},
+		{"empty vars", "$test", map[string]string{}, "$test"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := resolveSetVars(tt.value, tt.vars)
+			if result != tt.expected {
+				t.Errorf("resolveSetVars(%q) = %q, want %q", tt.value, result, tt.expected)
+			}
+		})
+	}
+}
+
 func TestParseNginxSitesResolvesUpstreams(t *testing.T) {
 	tmpDir := t.TempDir()
 	sitesEnabled := filepath.Join(tmpDir, "sites-enabled")
@@ -475,8 +633,138 @@ server {
 		t.Fatalf("expected 1 site, got %d", len(sites))
 	}
 
-	if sites[0].ProxyPass != "http://127.0.0.1:4000" {
-		t.Errorf("proxy_pass = %q, want %q", sites[0].ProxyPass, "http://127.0.0.1:4000")
+	if len(sites[0].ProxyPasses) != 1 {
+		t.Fatalf("expected 1 proxy_pass, got %d", len(sites[0].ProxyPasses))
+	}
+	if sites[0].ProxyPasses[0].Upstream != "http://127.0.0.1:4000" {
+		t.Errorf("proxy_passes[0].Upstream = %q, want %q", sites[0].ProxyPasses[0].Upstream, "http://127.0.0.1:4000")
+	}
+	if sites[0].ProxyPasses[0].Path != "/" {
+		t.Errorf("proxy_passes[0].Path = %q, want /", sites[0].ProxyPasses[0].Path)
+	}
+}
+
+func TestParseNginxSitesResolvesSetVars(t *testing.T) {
+	tmpDir := t.TempDir()
+	sitesEnabled := filepath.Join(tmpDir, "sites-enabled")
+	os.MkdirAll(sitesEnabled, 0755)
+
+	// Config with set variable and proxy_pass using it (like AO pattern)
+	siteConfig := `server {
+    listen 443 ssl;
+    server_name app.example.com;
+
+    set $cdn_origin "https://d123456.cloudfront.net";
+
+    location /assets {
+        proxy_pass $cdn_origin;
+    }
+
+    location / {
+        proxy_pass http://localhost:3000;
+    }
+}
+`
+	os.WriteFile(filepath.Join(sitesEnabled, "app.conf"), []byte(siteConfig), 0644)
+
+	mainConfig := filepath.Join(tmpDir, "nginx.conf")
+	mainContent := "events {}\nhttp {\n    include " + filepath.Join(sitesEnabled, "*") + ";\n}\n"
+	os.WriteFile(mainConfig, []byte(mainContent), 0644)
+
+	sites, err := parseNginxSites(mainConfig)
+	if err != nil {
+		t.Fatalf("parseNginxSites returned error: %v", err)
+	}
+
+	if len(sites) != 1 {
+		t.Fatalf("expected 1 site, got %d", len(sites))
+	}
+
+	if len(sites[0].ProxyPasses) != 2 {
+		t.Fatalf("expected 2 proxy_passes, got %d: %+v", len(sites[0].ProxyPasses), sites[0].ProxyPasses)
+	}
+
+	// First proxy_pass: /assets → resolved set variable
+	if sites[0].ProxyPasses[0].Path != "/assets" {
+		t.Errorf("proxy_passes[0].Path = %q, want /assets", sites[0].ProxyPasses[0].Path)
+	}
+	if sites[0].ProxyPasses[0].Upstream != "https://d123456.cloudfront.net" {
+		t.Errorf("proxy_passes[0].Upstream = %q, want https://d123456.cloudfront.net", sites[0].ProxyPasses[0].Upstream)
+	}
+
+	// Second proxy_pass: / → direct URL
+	if sites[0].ProxyPasses[1].Path != "/" {
+		t.Errorf("proxy_passes[1].Path = %q, want /", sites[0].ProxyPasses[1].Path)
+	}
+	if sites[0].ProxyPasses[1].Upstream != "http://localhost:3000" {
+		t.Errorf("proxy_passes[1].Upstream = %q, want http://localhost:3000", sites[0].ProxyPasses[1].Upstream)
+	}
+}
+
+func TestParseNginxSitesWithInlineIncludes(t *testing.T) {
+	// Simulate AO-style config: server block includes a file that has location+proxy_pass
+	tmpDir := t.TempDir()
+	sitesEnabled := filepath.Join(tmpDir, "sites-enabled")
+	os.MkdirAll(sitesEnabled, 0755)
+
+	// Create include file (relative to nginx config dir, like AO's `include proxy_pass_config_ao;`)
+	includeContent := `location /state-license-requirements/ {
+    proxy_pass $ao_slr_origin;
+}
+`
+	os.WriteFile(filepath.Join(tmpDir, "proxy_pass_config_ao"), []byte(includeContent), 0644)
+
+	// Create site config that includes the proxy config
+	siteConfig := `upstream ao_app {
+    server 127.0.0.1:5000;
+}
+
+server {
+    listen 443 ssl;
+    server_name www.audiologyonline.com;
+
+    set $ao_slr_origin "https://d999999.cloudfront.net";
+
+    include proxy_pass_config_ao;
+
+    location / {
+        proxy_pass http://ao_app;
+    }
+}
+`
+	os.WriteFile(filepath.Join(sitesEnabled, "ao"), []byte(siteConfig), 0644)
+
+	mainConfig := filepath.Join(tmpDir, "nginx.conf")
+	mainContent := "events {}\nhttp {\n    include " + filepath.Join(sitesEnabled, "*") + ";\n}\n"
+	os.WriteFile(mainConfig, []byte(mainContent), 0644)
+
+	sites, err := parseNginxSites(mainConfig)
+	if err != nil {
+		t.Fatalf("parseNginxSites returned error: %v", err)
+	}
+
+	if len(sites) != 1 {
+		t.Fatalf("expected 1 site, got %d", len(sites))
+	}
+
+	if len(sites[0].ProxyPasses) != 2 {
+		t.Fatalf("expected 2 proxy_passes, got %d: %+v", len(sites[0].ProxyPasses), sites[0].ProxyPasses)
+	}
+
+	// First: /state-license-requirements/ → resolved set var
+	if sites[0].ProxyPasses[0].Path != "/state-license-requirements/" {
+		t.Errorf("proxy_passes[0].Path = %q, want /state-license-requirements/", sites[0].ProxyPasses[0].Path)
+	}
+	if sites[0].ProxyPasses[0].Upstream != "https://d999999.cloudfront.net" {
+		t.Errorf("proxy_passes[0].Upstream = %q, want https://d999999.cloudfront.net", sites[0].ProxyPasses[0].Upstream)
+	}
+
+	// Second: / → resolved upstream
+	if sites[0].ProxyPasses[1].Path != "/" {
+		t.Errorf("proxy_passes[1].Path = %q, want /", sites[0].ProxyPasses[1].Path)
+	}
+	if sites[0].ProxyPasses[1].Upstream != "http://127.0.0.1:5000" {
+		t.Errorf("proxy_passes[1].Upstream = %q, want http://127.0.0.1:5000", sites[0].ProxyPasses[1].Upstream)
 	}
 }
 
