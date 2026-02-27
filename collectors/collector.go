@@ -11,10 +11,10 @@ import (
 // CollectorStatus represents the outcome of a collector's most recent execution
 type CollectorStatus struct {
 	Status   string  `json:"status"`             // "ok", "error", "skipped"
-	Error    string  `json:"error,omitempty"`     // error message if status is "error"
-	Duration float64 `json:"duration_ms"`         // execution time in milliseconds
-	Cached   bool    `json:"cached,omitempty"`    // true if result was served from cache
-	LastRun  string  `json:"last_run,omitempty"`  // timestamp of last successful collection
+	Error    string  `json:"error,omitempty"`    // error message if status is "error"
+	Duration float64 `json:"duration_ms"`        // execution time in milliseconds
+	Cached   bool    `json:"cached,omitempty"`   // true if result was served from cache
+	LastRun  string  `json:"last_run,omitempty"` // timestamp of last successful collection
 }
 
 // Collector is a struct that represents a collector
