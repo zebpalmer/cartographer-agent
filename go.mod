@@ -18,6 +18,6 @@ require (
 	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rogpeppe/go-internal v1.8.1 // indirect
-	golang.org/x/crypto v0.49.0 // indirect
-	golang.org/x/sys v0.44.0 // indirect
+	golang.org/x/crypto v0.52.0 // indirect
+	golang.org/x/sys v0.45.0 // indirect
 )
