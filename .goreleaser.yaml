@@ -46,6 +46,12 @@ checksum:
 snapshot:
   version_template: "{{ incpatch .Version }}-snapshot+{{ .ShortCommit }}"
 
+# Mark prerelease tags (vX.Y.Z-rc.N) as GitHub prereleases so they never
+# become the repo's "latest" release. `auto` derives it from the tag's
+# semver prerelease component.
+release:
+  prerelease: auto
+
 changelog:
   sort: asc
   filters:

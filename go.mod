@@ -1,5 +1,7 @@
 module cartographer-go-agent
 
+go 1.26.5
+
 require (
 	github.com/go-co-op/gocron/v2 v2.21.1
 	github.com/google/uuid v1.6.0
@@ -19,5 +21,3 @@ require (
 	golang.org/x/crypto v0.49.0 // indirect
 	golang.org/x/sys v0.44.0 // indirect
 )
-
-go 1.25.3
