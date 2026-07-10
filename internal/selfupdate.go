@@ -3,6 +3,8 @@ package internal
 import (
 	"bytes"
 	"cartographer-go-agent/configuration"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log/slog"
@@ -33,20 +35,26 @@ func SelfUpdate(version string, config configuration.Config) error {
 		return err
 	}
 
-	// Step 3: Make the downloaded file executable
+	// Step 3: Verify the download against the release's checksums.txt
+	if err := verifyChecksum(newBinaryPath, downloadURL); err != nil {
+		slog.Error("Checksum verification failed", slog.String("error", err.Error()))
+		return err
+	}
+
+	// Step 4: Make the downloaded file executable
 	err = os.Chmod(newBinaryPath, 0755)
 	if err != nil {
 		slog.Error("Failed to make the downloaded binary executable", slog.String("error", err.Error()))
 		return err
 	}
 
-	// Step 4: Verify that the new binary runs with "--version"
+	// Step 5: Verify that the new binary runs with "--version"
 	if err := verifyBinary(newBinaryPath); err != nil {
 		slog.Error("Downloaded binary failed verification", slog.String("error", err.Error()))
 		return err
 	}
 
-	// Step 5: Replace the current binary
+	// Step 6: Replace the current binary
 	currentBinaryPath, err := os.Executable() // Path to the currently running binary
 	if err != nil {
 		slog.Error("Failed to get current binary path", slog.String("error", err.Error()))
@@ -59,7 +67,7 @@ func SelfUpdate(version string, config configuration.Config) error {
 	}
 	slog.Info("Replaced the binary with the new version")
 
-	// Step 6: Restart the daemon using systemd
+	// Step 7: Restart the daemon using systemd
 	err = restartAgentViaSystemd()
 	if err != nil {
 		slog.Error("Failed to restart agent via systemd", slog.String("error", err.Error()))
@@ -67,6 +75,81 @@ func SelfUpdate(version string, config configuration.Config) error {
 	}
 	slog.Info("Agent restarted successfully")
 	return nil
+}
+
+// verifyChecksum fetches the release's checksums.txt (published alongside
+// the binary) and verifies the downloaded file's SHA-256 against the
+// entry for this asset. A release without a checksums.txt (published
+// before the move to GoReleaser) logs a warning and skips verification;
+// a fetch error, missing entry, or mismatch fails the update.
+func verifyChecksum(binaryPath, downloadURL string) error {
+	slash := strings.LastIndex(downloadURL, "/")
+	if slash < 0 {
+		return fmt.Errorf("cannot derive checksums.txt location from URL: %s", downloadURL)
+	}
+	checksumsURL := downloadURL[:slash+1] + "checksums.txt"
+	assetName := downloadURL[slash+1:]
+
+	resp, err := http.Get(checksumsURL)
+	if err != nil {
+		return fmt.Errorf("fetching checksums.txt: %w", err)
+	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
+	if resp.StatusCode == http.StatusNotFound {
+		slog.Warn("Release has no checksums.txt; skipping checksum verification", slog.String("url", checksumsURL))
+		return nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("fetching checksums.txt: %s, status code: %d", checksumsURL, resp.StatusCode)
+	}
+	checksums, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("reading checksums.txt: %w", err)
+	}
+
+	expected, err := checksumFor(checksums, assetName)
+	if err != nil {
+		return err
+	}
+	actual, err := fileSHA256(binaryPath)
+	if err != nil {
+		return err
+	}
+	if !strings.EqualFold(expected, actual) {
+		return fmt.Errorf("checksum mismatch for %s: expected %s, got %s", assetName, expected, actual)
+	}
+	slog.Info("Checksum verified", slog.String("asset", assetName))
+	return nil
+}
+
+// checksumFor finds the SHA-256 entry for asset in checksums.txt content
+// (sha256sum format: "<hex>  <filename>" per line).
+func checksumFor(checksums []byte, asset string) (string, error) {
+	for _, line := range strings.Split(string(checksums), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && fields[1] == asset {
+			return fields[0], nil
+		}
+	}
+	return "", fmt.Errorf("no checksum entry for %s in checksums.txt", asset)
+}
+
+// fileSHA256 returns the hex-encoded SHA-256 of the file at path.
+func fileSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		_ = f.Close()
+	}()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // verifyBinary tests the downloaded binary by running it with "--version"

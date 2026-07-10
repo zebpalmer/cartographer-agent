@@ -1,6 +1,7 @@
 # Triggered by pushing a semver tag (stratt release does the bump/tag/push).
 # GoReleaser cross-compiles the binaries and publishes the GitHub Release
-# per .goreleaser.yaml.
+# per .goreleaser.yaml. Each binary gets a Sigstore artifact attestation
+# so provenance can be verified with `gh attestation verify`.
 
 name: release
 
@@ -10,14 +11,16 @@ on:
       - "v*.*.*"
 
 permissions:
-  contents: write
+  contents: write       # create the GitHub Release
+  id-token: write       # OIDC for sigstore keyless signing
+  attestations: write   # publish GitHub artifact attestations
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0 # needed for changelog
 
@@ -40,3 +43,29 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Attest the release binaries. GoReleaser has already published the
+      # release by this point, so a transient Sigstore failure here would
+      # leave a published-but-unattested release — retry once, then fail
+      # the run loudly. subject-checksums covers every asset in
+      # checksums.txt under its published (release-asset) name.
+      - name: Attest release binaries
+        id: attest
+        continue-on-error: true
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-checksums: dist/checksums.txt
+
+      - name: Attest release binaries (retry)
+        if: steps.attest.outcome == 'failure'
+        id: attest_retry
+        continue-on-error: true
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-checksums: dist/checksums.txt
+
+      - name: Fail if attestation never succeeded
+        if: steps.attest.outcome == 'failure' && steps.attest_retry.outcome == 'failure'
+        run: |
+          echo "::error::build-provenance attestation failed after retry; the release is published but unattested — cut a new tag to re-run" >&2
+          exit 1

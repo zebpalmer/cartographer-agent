@@ -16,5 +16,7 @@ This project uses [stratt](https://stratt.sh) as its task runner:
 - `stratt run snapshot` — cross-compile all release platforms via GoReleaser (no publish)
 - `stratt release patch|minor|major` — verify, bump version, tag, and push; GitHub Actions runs GoReleaser to build and publish the release artifacts from the tag
 
+See [DEPLOY.md](DEPLOY.md) for the full release/install/self-update contract.
+
 ## License
 This project is licensed under the Apache License 2.0. See the LICENSE file for details.
