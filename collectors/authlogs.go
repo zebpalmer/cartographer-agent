@@ -110,7 +110,6 @@ func parseSSHLoginEvents(r io.Reader) ([]SSHLoginEvent, error) {
 			// Convert timestamp to UTC
 			timestampUTC := timestamp.UTC()
 
-
 			// Create a unique key based on username and source IP
 			userIPKey := matches[1] + "_" + matches[2]
 
