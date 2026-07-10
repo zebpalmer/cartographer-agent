@@ -1,47 +1,42 @@
-name: Release Cartographer-Agent
+# Triggered by pushing a semver tag (stratt release does the bump/tag/push).
+# GoReleaser cross-compiles the binaries and publishes the GitHub Release
+# per .goreleaser.yaml.
+
+name: release
 
 on:
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]*'
+      - "v*.*.*"
+
+permissions:
+  contents: write
 
 jobs:
-  releases-matrix:
-    name: Release Go Binary
+  release:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    strategy:
-      matrix:
-        variant:
-          - { "name": "linux-amd64", "args": "GOOS=linux GOARCH=amd64" }
-          - { "name": "linux-arm6", "args": "GOOS=linux GOARCH=arm GOARM=6" }
-          - { "name": "linux-arm7", "args": "GOOS=linux GOARCH=arm GOARM=7" }
-          - { "name": "linux-arm64", "args": "GOOS=linux GOARCH=arm64" }
-          - { "name": "darwin-amd64", "args": "GOOS=darwin GOARCH=amd64" }
-          - { "name": "darwin-arm64", "args": "GOOS=darwin GOARCH=arm64" }
-
     steps:
-      - name: Set Versions
-        id: set_version
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Checkout the repository
-        uses: actions/checkout@v4
-      - name: Setup Go
-        uses: actions/setup-go@v5
+      - name: Checkout
+        uses: actions/checkout@v6
         with:
-          go-version: '1.25.x'
-      - name: Get project dependencies
-        run: go mod download
+          fetch-depth: 0 # needed for changelog
 
-      - name: Build ${{ matrix.variant.name }}
-        run: CGO_ENABLED=0 ${{ matrix.variant.args }} go build -ldflags="-s -w -X 'main.Version=${{ steps.set_version.outputs.version }}'" -o "cartographer-agent_${{ matrix.variant.name }}"
-
-      - name: Upload binaries to GitHub release
-        uses: svenstaro/upload-release-action@v2
+      - name: Set up Go
+        uses: actions/setup-go@v6
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: cartographer-agent_${{ matrix.variant.name }}
-          asset_name: cartographer-agent_${{ matrix.variant.name }}
-          tag: ${{ github.ref_name }}
+          go-version: stable
+          cache: true
+
+      # A tag must never publish untested binaries. `stratt release`
+      # runs verification locally, but this guards direct tag pushes.
+      - name: Test
+        run: go test ./...
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

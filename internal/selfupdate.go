@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"text/template"
 )
@@ -88,12 +89,35 @@ func verifyBinary(binaryPath string) error {
 	return nil
 }
 
+// archVariant returns the architecture string used in release asset names.
+// Release binaries for 32-bit ARM are GOARM-specific (arm6, arm7), while
+// runtime.GOARCH is just "arm" — append the GOARM level recorded in the
+// binary's build settings so the updater requests the right asset.
+func archVariant(goarch string, settings []debug.BuildSetting) string {
+	if goarch != "arm" {
+		return goarch
+	}
+	for _, s := range settings {
+		if s.Key == "GOARM" {
+			// GOARM can carry a float-ABI suffix (e.g. "7,hardfloat");
+			// only the level is part of the asset name
+			return goarch + strings.SplitN(s.Value, ",", 2)[0]
+		}
+	}
+	return goarch
+}
+
 func buildDownloadURL(version string, templateURL string) (string, error) {
+	arch := runtime.GOARCH
+	if info, ok := debug.ReadBuildInfo(); ok {
+		arch = archVariant(runtime.GOARCH, info.Settings)
+	}
+
 	// Create a map with the values to substitute
 	data := map[string]string{
 		"version": version,
 		"osType":  runtime.GOOS,
-		"arch":    runtime.GOARCH,
+		"arch":    arch,
 	}
 
 	// Parse and execute the template string

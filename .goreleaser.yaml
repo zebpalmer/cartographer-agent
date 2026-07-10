@@ -1,0 +1,57 @@
+# Driven by .github/workflows/release.yaml. `stratt release` runs the
+# pre-tag verification locally; GoReleaser builds and publishes the
+# binaries after the tag is pushed.
+version: 2
+
+project_name: cartographer-agent
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: cartographer-agent
+    main: .
+    binary: cartographer-agent
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - "6"
+      - "7"
+    ignore:
+      - goos: darwin
+        goarch: arm
+    ldflags:
+      - -s -w
+      - -X main.Version={{ .Version }}
+
+# Publish raw binaries (not tarballs) named exactly like the assets the
+# pre-goreleaser release workflow uploaded, so anything fetching
+# cartographer-agent_<os>-<arch> from GitHub Releases keeps working.
+archives:
+  - id: cartographer-agent
+    formats: [binary]
+    name_template: "cartographer-agent_{{ .Os }}-{{ .Arch }}{{ .Arm }}"
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot+{{ .ShortCommit }}"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - Merge pull request
+      - Merge branch

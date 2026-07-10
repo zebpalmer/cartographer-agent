@@ -1,0 +1,39 @@
+# stratt configuration — replaces the Makefile.
+#
+# Built-in verbs cover the old make targets:
+#   make all                 → stratt all      (sync + format + lint + test)
+#   make style               → stratt style    (format + lint)
+#   make test                → stratt test
+#   make format              → stratt format
+#   make lint                → stratt lint
+#   make mod-tidy            → stratt lock
+#   make build               → stratt run snapshot  (GoReleaser cross-compile, no publish)
+#   make release TYPE=patch  → stratt release patch (verify, bump, tag, push)
+#
+# GitHub Actions runs GoReleaser to build and publish release artifacts
+# after `stratt release` pushes the tag (.github/workflows/release.yaml).
+
+# The released version is injected at build time from the git tag, so there
+# is no source-code constant to bump. stratt.toml itself is the version
+# source: `stratt release` bumps the line below, commits, and tags
+# v{new_version}.
+[bump]
+current_version = "1.4.0"
+
+[[bump.files]]
+filename = "stratt.toml"
+search = 'current_version = "{current_version}"'
+replace = 'current_version = "{new_version}"'
+
+# Cross-compile all release platforms locally via GoReleaser without
+# publishing anything. Binaries land in ./dist (gitignored).
+[tasks.snapshot]
+description = "Build local snapshot binaries for all platforms via GoReleaser (no publish)"
+run = "goreleaser release --snapshot --clean --skip=publish"
+
+# Build a local dev binary for manual testing. Lands in ./bin, which is
+# gitignored and removed by `stratt clean`. Stamps a `dev-<git describe>`
+# version so it's never mistaken for a release build.
+[tasks.dev]
+description = "Build a local dev binary at ./bin/cartographer-agent for manual testing"
+run = 'go build -ldflags "-X main.Version=dev-$(git describe --tags --always --dirty)" -o bin/cartographer-agent .'
