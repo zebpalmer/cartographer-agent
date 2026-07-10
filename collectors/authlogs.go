@@ -3,6 +3,8 @@ package collectors
 import (
 	"bufio"
 	"cartographer-go-agent/configuration"
+	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"regexp"
@@ -31,12 +33,53 @@ func parseSSHLogins(logFile string) ([]SSHLoginEvent, error) {
 		}
 	}(file)
 
+	return parseSSHLoginEvents(file)
+}
+
+// parseSyslogTimestamp parses the leading timestamp of a syslog line. It
+// supports both the traditional BSD format ("Jan _2 15:04:05"), which has no
+// year, and the RFC 3339 high-precision format used by modern rsyslog
+// ("2026-07-10T07:30:22.434548+00:00").
+func parseSyslogTimestamp(line string, now time.Time, location *time.Location) (time.Time, error) {
+	fields := strings.Fields(line)
+	if len(fields) == 0 {
+		return time.Time{}, fmt.Errorf("empty log line")
+	}
+
+	// RFC 3339 format: the timestamp is a single field
+	if timestamp, err := time.Parse(time.RFC3339, fields[0]); err == nil {
+		return timestamp, nil
+	}
+
+	// Traditional BSD format: "Jan _2 15:04:05" across three fields
+	if len(fields) < 3 {
+		return time.Time{}, fmt.Errorf("unrecognized timestamp in line: %q", line)
+	}
+	timestamp, err := time.ParseInLocation("Jan _2 15:04:05", strings.Join(fields[0:3], " "), location)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	// The BSD format omits the year; assume the current year
+	timestamp = timestamp.AddDate(now.Year(), 0, 0)
+
+	// Handle New Year's edge case (if timestamp is in the future)
+	if timestamp.After(now) {
+		timestamp = timestamp.AddDate(-1, 0, 0)
+	}
+
+	return timestamp, nil
+}
+
+// parseSSHLoginEvents scans syslog-formatted lines and returns the most
+// recent SSH login within the last 24 hours for each (username, IP) pair
+func parseSSHLoginEvents(r io.Reader) ([]SSHLoginEvent, error) {
 	var events []SSHLoginEvent
 
 	// Regular expression to match the SSH login pattern
 	regex := regexp.MustCompile(`Accepted publickey for (\w+) from ([\d\.]+) port \d+ ssh2`)
 
-	scanner := bufio.NewScanner(file)
+	scanner := bufio.NewScanner(r)
 	now := time.Now()
 
 	// Get the local timezone of the system
@@ -53,20 +96,10 @@ func parseSSHLogins(logFile string) ([]SSHLoginEvent, error) {
 		line := scanner.Text()
 		matches := regex.FindStringSubmatch(line)
 		if matches != nil {
-			// Extract the timestamp from the log entry
-			timestampStr := strings.Fields(line)[0:3]
-			timestamp, err := time.ParseInLocation("Jan _2 15:04:05", strings.Join(timestampStr, " "), location)
+			timestamp, err := parseSyslogTimestamp(line, now, location)
 			if err != nil {
 				slog.Error("Error parsing timestamp", slog.Any("error", err))
 				continue
-			}
-
-			// Add the current year to the timestamp
-			timestamp = timestamp.AddDate(now.Year(), 0, 0)
-
-			// Handle New Year's edge case (if timestamp is in the future)
-			if timestamp.After(now) {
-				timestamp = timestamp.AddDate(-1, 0, 0)
 			}
 
 			// Only include events from the last 24 hours
@@ -76,6 +109,7 @@ func parseSSHLogins(logFile string) ([]SSHLoginEvent, error) {
 
 			// Convert timestamp to UTC
 			timestampUTC := timestamp.UTC()
+
 
 			// Create a unique key based on username and source IP
 			userIPKey := matches[1] + "_" + matches[2]
