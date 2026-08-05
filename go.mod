@@ -6,7 +6,7 @@ require (
 	github.com/go-co-op/gocron/v2 v2.22.0
 	github.com/google/uuid v1.6.0
 	github.com/nats-io/nats.go v1.52.0
-	github.com/nats-io/nkeys v0.4.15
+	github.com/nats-io/nkeys v0.4.16
 	github.com/zcalusic/sysinfo v1.1.3
 	gopkg.in/yaml.v3 v3.0.1
 )
