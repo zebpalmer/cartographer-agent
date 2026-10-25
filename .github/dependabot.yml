@@ -1,6 +1,29 @@
+# Combined PRs, to keep GitHub Actions minutes down:
+# - version updates: one PR a week for the whole repo (all ecosystems);
+# - security updates still open as soon as an advisory lands (GitHub doesn't
+#   schedule them), but grouped: one PR per ecosystem, not one per package.
+# rebase-strategy: disabled — an open PR runs CI once, not again whenever main moves.
 version: 2
-updates:
-  - package-ecosystem: "gomod" 
-    directory: "/" 
+multi-ecosystem-groups:
+  dependencies:
     schedule:
-      interval: "weekly"
+      interval: weekly
+updates:
+  - package-ecosystem: gomod
+    directory: "/"
+    patterns: ["*"]
+    multi-ecosystem-group: dependencies
+    rebase-strategy: disabled
+    groups:
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: "/"
+    patterns: ["*"]
+    multi-ecosystem-group: dependencies
+    rebase-strategy: disabled
+    groups:
+      security:
+        applies-to: security-updates
+        patterns: ["*"]
