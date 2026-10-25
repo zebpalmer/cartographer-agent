@@ -5,7 +5,6 @@ import (
 	"cartographer-go-agent/common"
 	"cartographer-go-agent/configuration"
 	"fmt"
-	"log/slog"
 	"regexp"
 	"runtime"
 	"strings"
@@ -47,11 +46,6 @@ func AptUpdatesCollector(ttl time.Duration, config *configuration.Config) *Colle
 			return nil, err
 		}
 
-		// For each package, determine if it is a security update
-		for i, update := range updates {
-			updates[i].IsSecurityUpdate = isSecurityUpdate(update.PackageName)
-		}
-
 		// Create the final data structure to return
 		return map[string]interface{}{
 			"available_updates": updates,
@@ -64,24 +58,21 @@ func parseAptUpdates(output string) ([]AptUpdateInfo, error) {
 	scanner := bufio.NewScanner(strings.NewReader(output))
 	var updates []AptUpdateInfo
 
-	// Updated regex to correctly parse the apt output
-	re := regexp.MustCompile(`(?m)^(\S+)/\S+\s+(\S+)\s+\S+\s+\[upgradable from: (\S+)\]`)
+	// <package>/<archive>[,<archive>...] <candidate> <arch> [upgradable from: <installed>]
+	// The archive list names where the candidate version comes from, e.g.
+	// "noble-updates,noble-security" or "trixie-security".
+	re := regexp.MustCompile(`(?m)^(\S+)/(\S+)\s+(\S+)\s+\S+\s+\[upgradable from: (\S+)\]`)
 
 	for scanner.Scan() {
 		line := scanner.Text()
 		matches := re.FindStringSubmatch(line)
-		if len(matches) == 4 {
-			packageName := matches[1]
-			candidateVersion := matches[2]
-			currentVersion := matches[3]
-
-			update := AptUpdateInfo{
-				PackageName:      packageName,
-				CurrentVersion:   currentVersion,
-				CandidateVersion: candidateVersion,
-				IsSecurityUpdate: false, // Default value, will be updated later
-			}
-			updates = append(updates, update)
+		if len(matches) == 5 {
+			updates = append(updates, AptUpdateInfo{
+				PackageName:      matches[1],
+				CurrentVersion:   matches[4],
+				CandidateVersion: matches[3],
+				IsSecurityUpdate: fromSecurityArchive(matches[2]),
+			})
 		}
 	}
 
@@ -92,20 +83,17 @@ func parseAptUpdates(output string) ([]AptUpdateInfo, error) {
 	return updates, nil
 }
 
-// isSecurityUpdate determines if a package is a security update
-func isSecurityUpdate(packageName string) bool {
-	// Run command to check if the package is in the security updates list
-	output, _, exitCode, err := runAptCommand("apt-cache policy "+packageName, &common.CommandOptions{
-		Timeout: 30,
-	})
-	if err != nil || exitCode != 0 {
-		// err can be nil with a non-zero exit code, so don't dereference it
-		slog.Error("Error checking security update status for package",
-			slog.String("package_name", packageName),
-			slog.Int("exit_code", exitCode),
-			slog.Any("error", err),
-		)
-		return false
+// fromSecurityArchive reports whether the candidate version is published in a security
+// archive: Debian "trixie-security", Ubuntu "noble-security", Ubuntu Pro
+// "noble-infra-security" / "noble-apps-security". Earlier versions grepped the whole
+// `apt-cache policy` output for "security", which also matched packages whose candidate
+// comes from the regular archive whenever any version in the table had a security origin,
+// overcounting by more than half on a Debian host (118 flagged vs 72 actual).
+func fromSecurityArchive(archives string) bool {
+	for _, archive := range strings.Split(archives, ",") {
+		if strings.HasSuffix(archive, "-security") {
+			return true
+		}
 	}
-	return strings.Contains(output, "security")
+	return false
 }

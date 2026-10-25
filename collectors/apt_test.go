@@ -1,8 +1,6 @@
 package collectors
 
 import (
-	"cartographer-go-agent/common"
-	"errors"
 	"reflect"
 	"testing"
 )
@@ -54,40 +52,55 @@ wazuh-agent/stable 4.9.1-1 amd64 [upgradable from: 4.9.0-1]`
 	}
 }
 
-// stubAptCommand replaces runAptCommand for one test.
-func stubAptCommand(t *testing.T, stdout string, exitCode int, err error) {
-	t.Helper()
-	orig := runAptCommand
-	runAptCommand = func(string, *common.CommandOptions) (string, string, int, error) {
-		return stdout, "", exitCode, err
+func TestParseAptUpdatesSecurityArchives(t *testing.T) {
+	// Line shapes taken from Debian 13 and Ubuntu 22.04/24.04 hosts.
+	out := `Listing... Done
+bsdutils/stable-updates 1:2.41.5-0+deb13u1 amd64 [upgradable from: 1:2.41-5]
+openssl/trixie-security 3.5.4-1~deb13u1 amd64 [upgradable from: 3.5.1-1]
+cloud-init/noble-updates,noble-security 25.2-0ubuntu1~24.04.1 all [upgradable from: 25.1.4-0ubuntu0~24.04.1]
+libkrb5-3/jammy-updates,jammy-security 1.19.2-2ubuntu0.7 amd64 [upgradable from: 1.19.2-2ubuntu0.6]
+curl/noble-infra-security 8.5.0-2ubuntu10.7 amd64 [upgradable from: 8.5.0-2ubuntu10.6]
+ceph-common/stable 19.2.3-pve2 amd64 [upgradable from: 19.2.3-pve1]`
+
+	updates, err := parseAptUpdates(out)
+	if err != nil {
+		t.Fatalf("Unexpected error during parsing: %v", err)
 	}
-	t.Cleanup(func() { runAptCommand = orig })
+
+	want := map[string]bool{
+		"bsdutils":    false, // regular point-release update, not a security fix
+		"openssl":     true,
+		"cloud-init":  true, // published in both -updates and -security
+		"libkrb5-3":   true,
+		"curl":        true, // Ubuntu Pro ESM security
+		"ceph-common": false,
+	}
+	if len(updates) != len(want) {
+		t.Fatalf("expected %d updates, got %d: %+v", len(want), len(updates), updates)
+	}
+	for _, u := range updates {
+		if got, ok := want[u.PackageName]; !ok || got != u.IsSecurityUpdate {
+			t.Errorf("%s: IsSecurityUpdate=%v, want %v", u.PackageName, u.IsSecurityUpdate, want[u.PackageName])
+		}
+	}
+	if updates[1].CandidateVersion != "3.5.4-1~deb13u1" || updates[1].CurrentVersion != "3.5.1-1" {
+		t.Errorf("openssl versions parsed wrong: %+v", updates[1])
+	}
 }
 
-func TestIsSecurityUpdateNonZeroExitWithoutError(t *testing.T) {
-	// Regression: a non-zero exit with a nil error used to panic on err.Error().
-	stubAptCommand(t, "", 100, nil)
-	if isSecurityUpdate("openssl") {
-		t.Error("expected false when apt-cache policy fails")
+func TestFromSecurityArchive(t *testing.T) {
+	cases := map[string]bool{
+		"trixie-security":              true,
+		"jammy-updates,jammy-security": true,
+		"noble-apps-security":          true,
+		"stable":                       false,
+		"focal":                        false,
+		"stable-updates":               false,
+		"security-tools":               false, // a third-party archive name, not a -security pocket
 	}
-}
-
-func TestIsSecurityUpdateCommandError(t *testing.T) {
-	stubAptCommand(t, "", 1, errors.New("boom"))
-	if isSecurityUpdate("openssl") {
-		t.Error("expected false when apt-cache policy errors")
-	}
-}
-
-func TestIsSecurityUpdateDetectsSecurityPocket(t *testing.T) {
-	policy := `openssl:
-  Installed: 3.0.13-0ubuntu3.4
-  Candidate: 3.0.13-0ubuntu3.5
-  Version table:
-     3.0.13-0ubuntu3.5 500
-        500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages`
-	stubAptCommand(t, policy, 0, nil)
-	if !isSecurityUpdate("openssl") {
-		t.Error("expected true for a candidate from the security pocket")
+	for archives, want := range cases {
+		if got := fromSecurityArchive(archives); got != want {
+			t.Errorf("fromSecurityArchive(%q) = %v, want %v", archives, got, want)
+		}
 	}
 }

@@ -2,9 +2,12 @@ package collectors
 
 import (
 	"bufio"
+	"cartographer-go-agent/common"
 	"cartographer-go-agent/configuration"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"regexp"
@@ -12,6 +15,18 @@ import (
 	"strings"
 	"time"
 )
+
+// authLogPath is the syslog file sshd logs to on hosts that run rsyslog.
+const authLogPath = "/var/log/auth.log"
+
+// sshJournalCommand reads the last day of sshd messages from journald, for hosts with no
+// auth.log (journald-only Debian 12+, Raspberry Pi OS). OpenSSH 9.8+ logs logins from the
+// per-connection sshd-session process, so both process names are matched (same-field
+// matches are OR'd).
+const sshJournalCommand = "journalctl --no-pager --quiet -o short-iso _COMM=sshd _COMM=sshd-session --since=-24h"
+
+// runJournalCommand runs journalctl; a variable so tests can substitute it.
+var runJournalCommand = common.RunCommand
 
 // SSHLoginEvent represents an SSH login event
 type SSHLoginEvent struct {
@@ -48,6 +63,12 @@ func parseSyslogTimestamp(line string, now time.Time, location *time.Location) (
 
 	// RFC 3339 format: the timestamp is a single field
 	if timestamp, err := time.Parse(time.RFC3339, fields[0]); err == nil {
+		return timestamp, nil
+	}
+
+	// journalctl -o short-iso on older systemd writes the offset without a colon
+	// ("2026-10-25T11:16:33-0600")
+	if timestamp, err := time.Parse("2006-01-02T15:04:05-0700", fields[0]); err == nil {
 		return timestamp, nil
 	}
 
@@ -149,11 +170,26 @@ func SSHLoginEventsCollector(ttl time.Duration, config *configuration.Config) *C
 			return nil, ErrCollectorSkipped
 		}
 
-		events, err := parseSSHLogins("/var/log/auth.log")
+		events, err := parseSSHLogins(authLogPath)
+		if errors.Is(err, fs.ErrNotExist) {
+			return sshLoginsFromJournal()
+		}
 		if err != nil {
 			return nil, err
 		}
 
 		return events, nil
 	})
+}
+
+// sshLoginsFromJournal parses SSH logins from journald when there is no auth.log.
+func sshLoginsFromJournal() ([]SSHLoginEvent, error) {
+	out, stderr, exitCode, err := runJournalCommand(sshJournalCommand, &common.CommandOptions{Timeout: 20})
+	if err != nil {
+		return nil, fmt.Errorf("no %s and journalctl failed: %w", authLogPath, err)
+	}
+	if exitCode != 0 {
+		return nil, fmt.Errorf("no %s and journalctl exited with code %d: %s", authLogPath, exitCode, stderr)
+	}
+	return parseSSHLoginEvents(strings.NewReader(out))
 }
