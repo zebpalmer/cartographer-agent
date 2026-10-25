@@ -18,7 +18,7 @@
 # source: `stratt release` bumps the line below, commits, and tags
 # v{new_version}.
 [bump]
-current_version = "1.5.2"
+current_version = "1.5.3"
 
 [[bump.files]]
 filename = "stratt.toml"
