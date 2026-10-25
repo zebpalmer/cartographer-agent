@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"cartographer-go-agent/common"
 	"cartographer-go-agent/configuration"
+	"fmt"
 	"log/slog"
 	"regexp"
 	"runtime"
@@ -19,6 +20,9 @@ type AptUpdateInfo struct {
 	IsSecurityUpdate bool   `json:"is_security_update"`
 }
 
+// runAptCommand runs apt commands; a variable so tests can substitute it.
+var runAptCommand = common.RunCommand
+
 // AptUpdatesCollector returns a collector for available APT updates on Ubuntu systems
 func AptUpdatesCollector(ttl time.Duration, config *configuration.Config) *Collector {
 	return NewCollector("apt", ttl, config, func(cfg *configuration.Config) (interface{}, error) {
@@ -27,11 +31,14 @@ func AptUpdatesCollector(ttl time.Duration, config *configuration.Config) *Colle
 		}
 
 		// Get the list of upgradable packages
-		results, _, exitCode, err := common.RunCommand("apt list --upgradable", &common.CommandOptions{
+		results, _, exitCode, err := runAptCommand("apt list --upgradable", &common.CommandOptions{
 			Timeout: 10,
 		})
-		if err != nil || exitCode != 0 {
+		if err != nil {
 			return nil, err
+		}
+		if exitCode != 0 {
+			return nil, fmt.Errorf("apt list --upgradable exited with code %d", exitCode)
 		}
 
 		// Parse the apt output
@@ -88,13 +95,15 @@ func parseAptUpdates(output string) ([]AptUpdateInfo, error) {
 // isSecurityUpdate determines if a package is a security update
 func isSecurityUpdate(packageName string) bool {
 	// Run command to check if the package is in the security updates list
-	output, _, exitCode, err := common.RunCommand("apt-cache policy "+packageName, &common.CommandOptions{
+	output, _, exitCode, err := runAptCommand("apt-cache policy "+packageName, &common.CommandOptions{
 		Timeout: 30,
 	})
 	if err != nil || exitCode != 0 {
+		// err can be nil with a non-zero exit code, so don't dereference it
 		slog.Error("Error checking security update status for package",
 			slog.String("package_name", packageName),
-			slog.String("error", err.Error()),
+			slog.Int("exit_code", exitCode),
+			slog.Any("error", err),
 		)
 		return false
 	}

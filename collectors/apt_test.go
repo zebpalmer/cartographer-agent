@@ -1,6 +1,8 @@
 package collectors
 
 import (
+	"cartographer-go-agent/common"
+	"errors"
 	"reflect"
 	"testing"
 )
@@ -49,5 +51,43 @@ wazuh-agent/stable 4.9.1-1 amd64 [upgradable from: 4.9.0-1]`
 	// Compare the expected and actual parsed output
 	if !reflect.DeepEqual(updates, expected) {
 		t.Errorf("Expected: %+v, got: %+v", expected, updates)
+	}
+}
+
+// stubAptCommand replaces runAptCommand for one test.
+func stubAptCommand(t *testing.T, stdout string, exitCode int, err error) {
+	t.Helper()
+	orig := runAptCommand
+	runAptCommand = func(string, *common.CommandOptions) (string, string, int, error) {
+		return stdout, "", exitCode, err
+	}
+	t.Cleanup(func() { runAptCommand = orig })
+}
+
+func TestIsSecurityUpdateNonZeroExitWithoutError(t *testing.T) {
+	// Regression: a non-zero exit with a nil error used to panic on err.Error().
+	stubAptCommand(t, "", 100, nil)
+	if isSecurityUpdate("openssl") {
+		t.Error("expected false when apt-cache policy fails")
+	}
+}
+
+func TestIsSecurityUpdateCommandError(t *testing.T) {
+	stubAptCommand(t, "", 1, errors.New("boom"))
+	if isSecurityUpdate("openssl") {
+		t.Error("expected false when apt-cache policy errors")
+	}
+}
+
+func TestIsSecurityUpdateDetectsSecurityPocket(t *testing.T) {
+	policy := `openssl:
+  Installed: 3.0.13-0ubuntu3.4
+  Candidate: 3.0.13-0ubuntu3.5
+  Version table:
+     3.0.13-0ubuntu3.5 500
+        500 http://security.ubuntu.com/ubuntu noble-security/main amd64 Packages`
+	stubAptCommand(t, policy, 0, nil)
+	if !isSecurityUpdate("openssl") {
+		t.Error("expected true for a candidate from the security pocket")
 	}
 }
