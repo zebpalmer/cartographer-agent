@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"strings"
 	"testing"
 )
 
@@ -159,4 +160,46 @@ func TestVerifyChecksum(t *testing.T) {
 			t.Errorf("expected 404 to be tolerated, got %v", err)
 		}
 	})
+}
+
+func TestStagingPathIsNextToBinary(t *testing.T) {
+	dir := t.TempDir()
+	current := filepath.Join(dir, "cartographer-agent")
+	if err := os.WriteFile(current, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	staged, err := stagingPath(current)
+	if err != nil {
+		t.Fatalf("stagingPath: %v", err)
+	}
+	if filepath.Dir(staged) != dir {
+		t.Fatalf("staged %q outside the binary's directory %q", staged, dir)
+	}
+	if !strings.HasPrefix(filepath.Base(staged), ".cartographer-agent.update-") {
+		t.Errorf("unexpected staging name %q", filepath.Base(staged))
+	}
+
+	// The replacement step is a same-directory rename, so it cannot cross filesystems.
+	if err := os.WriteFile(staged, []byte("new"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(staged, current); err != nil {
+		t.Fatalf("rename over the current binary: %v", err)
+	}
+	if got, _ := os.ReadFile(current); string(got) != "new" {
+		t.Errorf("current binary = %q, want the staged contents", got)
+	}
+}
+
+func TestStagingPathUniquePerCall(t *testing.T) {
+	current := filepath.Join(t.TempDir(), "cartographer-agent")
+	a, errA := stagingPath(current)
+	b, errB := stagingPath(current)
+	if errA != nil || errB != nil {
+		t.Fatalf("stagingPath errors: %v, %v", errA, errB)
+	}
+	if a == b {
+		t.Errorf("staging paths collide: %q", a)
+	}
 }

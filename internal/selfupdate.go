@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"strings"
@@ -27,8 +28,28 @@ func SelfUpdate(version string, config configuration.Config) error {
 	}
 	slog.Info("Downloading new version", slog.String("version", version), slog.String("url", downloadURL))
 
-	// Step 2: Download the new binary
-	newBinaryPath := "/tmp/cartographer-agent" // Temporary path to download new binary
+	// Step 2: Download the new binary next to the current one. Staging it in the same
+	// directory keeps the final rename on one filesystem: a /tmp download could not be
+	// renamed over /usr/local/bin on hosts where /tmp is a tmpfs (Debian 13 and Ubuntu
+	// 26.04 by default), failing every update with "invalid cross-device link". It also
+	// avoids a fixed, predictable file name in a world-writable directory.
+	currentBinaryPath, err := currentExecutable()
+	if err != nil {
+		slog.Error("Failed to get current binary path", slog.String("error", err.Error()))
+		return err
+	}
+	newBinaryPath, err := stagingPath(currentBinaryPath)
+	if err != nil {
+		slog.Error("Failed to create staging file for the new binary", slog.String("error", err.Error()))
+		return err
+	}
+	replaced := false
+	defer func() {
+		if !replaced {
+			_ = os.Remove(newBinaryPath)
+		}
+	}()
+
 	err = downloadFile(newBinaryPath, downloadURL)
 	if err != nil {
 		slog.Error("Failed to download new binary", slog.String("error", err.Error()))
@@ -54,17 +75,13 @@ func SelfUpdate(version string, config configuration.Config) error {
 		return err
 	}
 
-	// Step 6: Replace the current binary
-	currentBinaryPath, err := os.Executable() // Path to the currently running binary
-	if err != nil {
-		slog.Error("Failed to get current binary path", slog.String("error", err.Error()))
-		return err
-	}
-	err = os.Rename(newBinaryPath, currentBinaryPath) // Overwrite the current binary
+	// Step 6: Replace the current binary (same directory, so an atomic rename)
+	err = os.Rename(newBinaryPath, currentBinaryPath)
 	if err != nil {
 		slog.Error("Failed to replace binary", slog.String("error", err.Error()))
 		return err
 	}
+	replaced = true
 	slog.Info("Replaced the binary with the new version")
 
 	// Step 7: Restart the daemon using systemd
@@ -279,4 +296,29 @@ func restartAgentViaSystemd() error {
 
 	slog.Info("Agent restarted successfully via systemd")
 	return nil
+}
+
+// currentExecutable returns the resolved path of the running binary.
+func currentExecutable() (string, error) {
+	path, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	return filepath.EvalSymlinks(path)
+}
+
+// stagingPath creates an empty, uniquely named file in the same directory as
+// currentBinaryPath and returns its path, so the new binary can later be renamed
+// over the current one without crossing a filesystem boundary.
+func stagingPath(currentBinaryPath string) (string, error) {
+	f, err := os.CreateTemp(filepath.Dir(currentBinaryPath), "."+filepath.Base(currentBinaryPath)+".update-*")
+	if err != nil {
+		return "", err
+	}
+	name := f.Name()
+	if err := f.Close(); err != nil {
+		_ = os.Remove(name)
+		return "", err
+	}
+	return name, nil
 }
