@@ -1,7 +1,10 @@
 package collectors
 
 import (
+	"cartographer-go-agent/common"
+	"errors"
 	"fmt"
+	"io/fs"
 	"reflect"
 	"sort"
 	"strings"
@@ -130,5 +133,65 @@ func TestParseSyslogTimestamp(t *testing.T) {
 				t.Errorf("expected %v, got %v", tt.want, got)
 			}
 		})
+	}
+}
+
+func TestSSHLoginsFromJournal(t *testing.T) {
+	now := time.Now()
+	// Shapes from real hosts: systemd 252 / OpenSSH 9.2 (offset without a colon, sshd) and
+	// systemd 257 / OpenSSH 10 (RFC 3339 offset, sshd-session).
+	out := fmt.Sprintf(`%s alluvium sshd[682058]: Accepted key ED25519 SHA256:abc found at /home/alice/.ssh/authorized_keys:1
+%s alluvium sshd[682058]: Accepted publickey for alice from 100.64.1.2 port 59042 ssh2: ED25519 SHA256:abc
+%s leeloo-n1 sshd-session[245274]: Accepted publickey for bob from 100.64.1.3 port 59060 ssh2: ED25519 SHA256:def
+%s leeloo-n1 sshd-session[245275]: Accepted publickey for carol from 100.64.1.4 port 59061 ssh2: ED25519 SHA256:ghi`,
+		now.Add(-1*time.Hour).Format("2006-01-02T15:04:05-0700"),
+		now.Add(-1*time.Hour).Format("2006-01-02T15:04:05-0700"),
+		now.Add(-2*time.Hour).Format(time.RFC3339),
+		now.Add(-30*time.Hour).Format(time.RFC3339), // older than 24h, excluded
+	)
+
+	orig := runJournalCommand
+	var gotCommand string
+	runJournalCommand = func(cmd string, _ *common.CommandOptions) (string, string, int, error) {
+		gotCommand = cmd
+		return out, "", 0, nil
+	}
+	t.Cleanup(func() { runJournalCommand = orig })
+
+	events, err := sshLoginsFromJournal()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(gotCommand, "_COMM=sshd ") || !strings.Contains(gotCommand, "_COMM=sshd-session") {
+		t.Errorf("journal query must match both sshd and sshd-session: %q", gotCommand)
+	}
+
+	sort.Sort(SSHLoginEventSorter(events))
+	want := []SSHLoginEvent{
+		{Username: "alice", SourceIP: "100.64.1.2", Time: now.Add(-1 * time.Hour).UTC().Format(time.RFC3339)},
+		{Username: "bob", SourceIP: "100.64.1.3", Time: now.Add(-2 * time.Hour).UTC().Format(time.RFC3339)},
+	}
+	if !reflect.DeepEqual(events, want) {
+		t.Errorf("events = %+v, want %+v", events, want)
+	}
+}
+
+func TestSSHLoginsFromJournalCommandFails(t *testing.T) {
+	orig := runJournalCommand
+	runJournalCommand = func(string, *common.CommandOptions) (string, string, int, error) {
+		return "", "No journal files were found.", 1, nil
+	}
+	t.Cleanup(func() { runJournalCommand = orig })
+
+	if _, err := sshLoginsFromJournal(); err == nil || !strings.Contains(err.Error(), "exited with code 1") {
+		t.Errorf("expected an exit-code error, got %v", err)
+	}
+}
+
+func TestMissingAuthLogIsNotExist(t *testing.T) {
+	// The collector falls back to journald only for a missing file, not for other errors.
+	_, err := parseSSHLogins(t.TempDir() + "/no-such-auth.log")
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("expected fs.ErrNotExist, got %v", err)
 	}
 }
