@@ -1,6 +1,6 @@
 module cartographer-go-agent
 
-go 1.26.5
+go 1.27.3
 
 require (
 	github.com/go-co-op/gocron/v2 v2.22.0
@@ -13,7 +13,7 @@ require (
 
 require (
 	github.com/jonboulle/clockwork v0.5.0 // indirect
-	github.com/klauspost/compress v1.18.5 // indirect
+	github.com/klauspost/compress v1.18.7 // indirect
 	github.com/kr/pretty v0.3.0 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
